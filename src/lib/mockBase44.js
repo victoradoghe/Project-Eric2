@@ -100,13 +100,16 @@ const INITIAL_AGENTS = [
     state: 'TX',
     phone: '+1 (512) 555-0121',
     email: 'elena@dwellmark.example',
+    photo_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
     avatar_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
     license_number: 'TX-724189',
     years_experience: 11,
-    service_areas: 'Downtown Austin, Zilker, Barton Hills, Tarrytown, West Lake Hills',
-    specialties: 'Luxury Homes, Waterfront, Relocation, High-Rise Condos',
+    service_areas: ['Downtown Austin', 'Zilker', 'Barton Hills', 'Tarrytown', 'West Lake Hills'],
+    specialties: ['Luxury Homes', 'Waterfront', 'Relocation', 'High-Rise Condos'],
     bio: 'With over a decade of luxury real estate advisory in Austin, Elena helps buyers, sellers, and investors find exceptional properties with confidence.',
     verified: true,
+    verification_status: 'verified',
+    is_demo: true,
     created_date: '2025-01-15T08:00:00Z',
   },
   {
@@ -119,13 +122,16 @@ const INITIAL_AGENTS = [
     state: 'TX',
     phone: '+1 (512) 555-0177',
     email: 'marcus@austinmetro.example',
+    photo_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
     avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
     license_number: 'TX-689320',
     years_experience: 8,
-    service_areas: 'South Congress, Bouldin, Travis Heights, East Austin, Mueller',
-    specialties: 'Modern Bungalows, Urban Infill, First-Time Buyers, New Construction',
+    service_areas: ['South Congress', 'Bouldin', 'Travis Heights', 'East Austin', 'Mueller'],
+    specialties: ['Modern Bungalows', 'Urban Infill', 'First-Time Buyers', 'New Construction'],
     bio: 'Marcus combines rigorous neighborhood market analysis with personalized search curation to find dream urban residences.',
     verified: true,
+    verification_status: 'verified',
+    is_demo: true,
     created_date: '2025-02-01T08:00:00Z',
   },
   {
@@ -138,13 +144,16 @@ const INITIAL_AGENTS = [
     state: 'TX',
     phone: '+1 (512) 555-0133',
     email: 'sarah.j@dwellmark.example',
+    photo_url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80',
     avatar_url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80',
     license_number: 'TX-810442',
     years_experience: 6,
-    service_areas: 'Domain, North Austin, Round Rock, Cedar Park',
-    specialties: 'Suburban Homes, Relocation, Rental Investments, Single Family',
+    service_areas: ['Domain', 'North Austin', 'Round Rock', 'Cedar Park'],
+    specialties: ['Suburban Homes', 'Relocation', 'Rental Investments', 'Single Family'],
     bio: 'Sarah is passionate about guiding families and tech professionals to neighborhood communities that balance lifestyle, schools, and commute.',
     verified: true,
+    verification_status: 'verified',
+    is_demo: true,
     created_date: '2025-02-10T08:00:00Z',
   },
   {
@@ -157,13 +166,16 @@ const INITIAL_AGENTS = [
     state: 'TX',
     phone: '+1 (214) 555-0155',
     email: 'david@lonestarliving.example',
+    photo_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
     avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
     license_number: 'TX-590214',
     years_experience: 14,
-    service_areas: 'Uptown Dallas, Preston Hollow, Lakewood, Highland Park',
-    specialties: 'Architectural Estates, Historic Preservation, Land Parcels',
+    service_areas: ['Uptown Dallas', 'Preston Hollow', 'Lakewood', 'Highland Park'],
+    specialties: ['Architectural Estates', 'Historic Preservation', 'Land Parcels'],
     bio: 'David brings 14 years of premier property transaction expertise, specializing in historic restorations and bespoke estate developments.',
     verified: true,
+    verification_status: 'verified',
+    is_demo: true,
     created_date: '2025-02-20T08:00:00Z',
   },
 ];
@@ -278,7 +290,27 @@ function sortItems(items, sortExpr) {
 }
 
 function createEntityStore(storageKey, initialData) {
-  const getStore = () => storage.get(storageKey, initialData);
+  const getStore = () => {
+    let data = storage.get(storageKey, initialData);
+    if (storageKey === 'agents' && Array.isArray(data)) {
+      data = data.map((agent) => ({
+        ...agent,
+        photo_url: agent.photo_url || agent.avatar_url,
+        verification_status: agent.verification_status || (agent.verified ? 'verified' : 'unverified'),
+        service_areas: Array.isArray(agent.service_areas)
+          ? agent.service_areas
+          : typeof agent.service_areas === 'string'
+            ? agent.service_areas.split(',').map((s) => s.trim()).filter(Boolean)
+            : [],
+        specialties: Array.isArray(agent.specialties)
+          ? agent.specialties
+          : typeof agent.specialties === 'string'
+            ? agent.specialties.split(',').map((s) => s.trim()).filter(Boolean)
+            : [],
+      }));
+    }
+    return data;
+  };
   const saveStore = (data) => storage.set(storageKey, data);
 
   return {

@@ -127,7 +127,18 @@ export default function AgentProfile() {
   }
 
   const average = reviews.length ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length : null;
-  const verified = agent.verification_status === 'verified';
+  const verified = agent.verification_status === 'verified' || agent.verified === true;
+  const photo = agent.photo_url || agent.avatar_url;
+  const serviceAreas = Array.isArray(agent.service_areas)
+    ? agent.service_areas
+    : typeof agent.service_areas === 'string'
+      ? agent.service_areas.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+  const specialties = Array.isArray(agent.specialties)
+    ? agent.specialties
+    : typeof agent.specialties === 'string'
+      ? agent.specialties.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
 
   return (
     <div className="dm-container py-10">
@@ -136,8 +147,8 @@ export default function AgentProfile() {
           <div className="dm-card p-6">
             <div className="flex flex-wrap items-start gap-5">
               <span className="grid h-20 w-20 overflow-hidden rounded-3xl bg-secondary">
-                {agent.photo_url ? (
-                  <img src={agent.photo_url} alt="" className="h-full w-full object-cover" />
+                {photo ? (
+                  <img src={photo} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <span className="grid h-full w-full place-items-center font-display text-2xl text-muted-foreground">
                     {(agent.display_name || '?').slice(0, 1)}
@@ -197,17 +208,17 @@ export default function AgentProfile() {
                   <span className="truncate">{agent.website}</span>
                 </div>
               ) : null}
-              {agent.service_areas?.length ? (
+              {serviceAreas.length ? (
                 <div className="flex items-start gap-2 text-sm">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <span>{agent.service_areas.join(', ')}</span>
+                  <span>{serviceAreas.join(', ')}</span>
                 </div>
               ) : null}
             </dl>
 
-            {agent.specialties?.length ? (
+            {specialties.length ? (
               <div className="mt-5 flex flex-wrap gap-2">
-                {agent.specialties.map((item) => (
+                {specialties.map((item) => (
                   <span key={item} className="dm-chip">
                     {item}
                   </span>

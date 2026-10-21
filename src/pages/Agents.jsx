@@ -108,6 +108,19 @@ export default function Agents() {
       <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {agents.map((agent) => {
           const rating = listingCounts[agent.id];
+          const photo = agent.photo_url || agent.avatar_url;
+          const isVerified = agent.verification_status === 'verified' || agent.verified === true;
+          const serviceAreas = Array.isArray(agent.service_areas)
+            ? agent.service_areas
+            : typeof agent.service_areas === 'string'
+              ? agent.service_areas.split(',').map((s) => s.trim()).filter(Boolean)
+              : [];
+          const specialties = Array.isArray(agent.specialties)
+            ? agent.specialties
+            : typeof agent.specialties === 'string'
+              ? agent.specialties.split(',').map((s) => s.trim()).filter(Boolean)
+              : [];
+
           return (
             <Link
               key={agent.id}
@@ -116,8 +129,8 @@ export default function Agents() {
             >
               <div className="flex items-start justify-between gap-3">
                 <span className="grid h-12 w-12 overflow-hidden rounded-2xl bg-secondary">
-                  {agent.photo_url ? (
-                    <img src={agent.photo_url} alt="" className="h-full w-full object-cover" />
+                  {photo ? (
+                    <img src={photo} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <span className="grid h-full w-full place-items-center font-display text-lg text-muted-foreground">
                       {(agent.display_name || '?').slice(0, 1)}
@@ -126,12 +139,12 @@ export default function Agents() {
                 </span>
                 <span
                   className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                    agent.verification_status === 'verified'
+                    isVerified
                       ? 'bg-primary/10 text-primary'
                       : 'bg-secondary text-muted-foreground'
                   }`}
                 >
-                  {agent.verification_status === 'verified' ? (
+                  {isVerified ? (
                     <>
                       <BadgeCheck className="h-3 w-3" /> Verified
                     </>
@@ -155,15 +168,15 @@ export default function Agents() {
                 <p className="text-sm text-muted-foreground">No reviews yet</p>
               )}
 
-              {agent.service_areas?.length ? (
+              {serviceAreas.length ? (
                 <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
                   <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span className="line-clamp-2">{agent.service_areas.join(', ')}</span>
+                  <span className="line-clamp-2">{serviceAreas.join(', ')}</span>
                 </p>
               ) : null}
 
-              {agent.specialties?.length ? (
-                <p className="line-clamp-1 text-xs text-muted-foreground">{agent.specialties.join(' · ')}</p>
+              {specialties.length ? (
+                <p className="line-clamp-1 text-xs text-muted-foreground">{specialties.join(' · ')}</p>
               ) : null}
 
               {agent.is_demo ? (
