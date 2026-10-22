@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +16,34 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState(
+    isSupabaseConfigured ? "checking" : resetToken ? "ready" : "invalid",
+  );
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    let active = true;
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active && session) setStatus("ready");
+    });
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (active && data.session) setStatus("ready");
+    });
+
+    const timeout = setTimeout(() => {
+      if (active) {
+        setStatus((current) => (current === "checking" ? "invalid" : current));
+      }
+    }, 4000);
+
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,7 +54,15 @@ export default function ResetPassword() {
     }
     setLoading(true);
     try {
-      await base44.auth.resetPassword({ resetToken, newPassword });
+      if (isSupabaseConfigured) {
+        const { error: updateError } = await supabase.auth.updateUser({
+          password: newPassword,
+        });
+        if (updateError) throw updateError;
+        await supabase.auth.signOut();
+      } else {
+        await base44.auth.resetPassword({ resetToken, newPassword });
+      }
       window.location.href = "/login";
     } catch (err) {
       setError(err.message || "Failed to reset password");
@@ -34,12 +71,26 @@ export default function ResetPassword() {
     }
   };
 
-  if (!resetToken) {
+  if (status === "checking") {
+    return (
+      <AuthLayout
+        icon={Loader2}
+        title="Verifying reset link"
+        subtitle="One moment while we check your link"
+      >
+        <div className="flex justify-center py-6">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (status === "invalid") {
     return (
       <AuthLayout
         icon={AlertTriangle}
         title="Invalid reset link"
-        subtitle="This password reset link is missing or invalid"
+        subtitle="This password reset link is missing or has expired"
         footer={
           <Link to="/forgot-password" className="text-primary font-medium hover:underline">
             Request a new link
@@ -47,7 +98,8 @@ export default function ResetPassword() {
         }
       >
         <p className="text-sm text-foreground text-center">
-          The link you used appears to be incomplete. Please request a new password reset email.
+          The link you used appears to be incomplete or expired. Please request a new password
+          reset email.
         </p>
       </AuthLayout>
     );

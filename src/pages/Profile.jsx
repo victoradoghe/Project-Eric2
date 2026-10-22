@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BadgeCheck, Save, ShieldQuestion, Upload } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
@@ -106,14 +107,21 @@ export default function Profile() {
     event.preventDefault();
     setSaving(true);
     try {
-      await base44.auth.updateMe({
+      const updates = {
         full_name: form.full_name,
         phone: form.phone,
         avatar_url: form.avatar_url,
         account_roles: form.account_roles,
         notification_frequency: form.notification_frequency,
         email_notifications: form.email_notifications,
-      });
+      };
+
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.auth.updateUser({ data: updates });
+        if (error) throw error;
+      } else {
+        await base44.auth.updateMe(updates);
+      }
       toast({ title: 'Profile saved' });
       await checkUserAuth?.();
     } catch (error) {

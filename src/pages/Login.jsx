@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { supabase, isSupabaseConfigured, getEnabledAuthProviders } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,29 +15,58 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
   // Post-login destination (e.g. the MCP OAuth consent page sends users here
   // with returnTo so the grant flow can resume). Same-origin paths only.
   const returnTo = safeReturnTo();
+
+  useEffect(() => {
+    let active = true;
+    getEnabledAuthProviders().then((providers) => {
+      if (active) setGoogleEnabled(Boolean(providers.google));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await base44.auth.loginViaEmailPassword(email, password);
-      try {
-        const me = await base44.auth.me();
-        if (me?.id) {
-          await base44.entities.Notification.create({
-            user_id: me.id,
-            type: "system",
-            title: "Welcome back!",
-            body: "You've successfully signed in to Dwellmark.",
-            read: false,
-          });
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        try {
+          if (data.user?.id) {
+            await base44.entities.Notification.create({
+              user_id: data.user.id,
+              type: "system",
+              title: "Welcome back!",
+              body: "You've successfully signed in to Dwellmark.",
+              read: false,
+            });
+          }
+        } catch {
+          // Don't block login if the notification can't be created.
         }
-      } catch {
-        // Don't block login if the notification can't be created.
+      } else {
+        await base44.auth.loginViaEmailPassword(email, password);
+        try {
+          const me = await base44.auth.me();
+          if (me?.id) {
+            await base44.entities.Notification.create({
+              user_id: me.id,
+              type: "system",
+              title: "Welcome back!",
+              body: "You've successfully signed in to Dwellmark.",
+              read: false,
+            });
+          }
+        } catch {
+          // Don't block login if the notification can't be created.
+        }
       }
       window.location.href = returnTo;
     } catch (err) {
@@ -46,8 +76,17 @@ export default function Login() {
     }
   };
 
-  const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", returnTo);
+  const handleGoogle = async () => {
+    if (!isSupabaseConfigured) {
+      base44.auth.loginWithProvider("google", returnTo);
+      return;
+    }
+    setError("");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}${returnTo}` },
+    });
+    if (error) setError(error.message);
   };
 
   return (
@@ -67,23 +106,27 @@ export default function Login() {
         </>
       }
     >
-      <Button
-        variant="outline"
-        className="w-full h-12 text-sm font-medium mb-6"
-        onClick={handleGoogle}
-      >
-        <GoogleIcon className="w-5 h-5 mr-2" />
-        Continue with Google
-      </Button>
+      {googleEnabled && (
+        <>
+          <Button
+            variant="outline"
+            className="w-full h-12 text-sm font-medium mb-6"
+            onClick={handleGoogle}
+          >
+            <GoogleIcon className="w-5 h-5 mr-2" />
+            Continue with Google
+          </Button>
 
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-3 text-muted-foreground">or</span>
-        </div>
-      </div>
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-3 text-muted-foreground">or</span>
+            </div>
+          </div>
+        </>
+      )}
 
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">

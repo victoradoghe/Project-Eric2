@@ -29,6 +29,21 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
+export async function getEnabledAuthProviders() {
+  if (!isSupabaseConfigured) return {};
+
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+      headers: { apikey: supabaseKey },
+    });
+    if (!response.ok) return {};
+    const settings = await response.json();
+    return settings.external || {};
+  } catch {
+    return {};
+  }
+}
+
 export async function checkSupabaseConnection() {
   if (!supabase) {
     throw new Error('Supabase is not configured (missing URL or publishable key).');
