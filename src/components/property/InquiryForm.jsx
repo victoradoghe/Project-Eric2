@@ -27,7 +27,7 @@ export default function InquiryForm({ listing, compact = false }) {
     return (
       <SignInPrompt
         title="Sign in to contact the listing owner"
-        description="Your enquiry is saved privately and only the owner, landlord or agent behind this listing can read it."
+        description="Your enquiry is saved privately and only the owner or landlord behind this listing can read it."
       />
     );
   }

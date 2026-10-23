@@ -17,9 +17,7 @@ const COLUMNS = [
   title: 'Tools',
   links: [
   { to: '/mortgage', label: 'Mortgage calculator' },
-  { to: '/home-values', label: 'Home value estimate' },
-  { to: '/agents', label: 'Find an agent' },
-  { to: '/agencies', label: 'Agencies' }]
+  { to: '/home-values', label: 'Home value estimate' }]
 
 },
 {
@@ -49,8 +47,8 @@ export default function SiteFooter() {
           <div>
             <BrandLogo showTagline />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-              A marketplace for buying, renting and listing homes — connecting buyers, renters, owners,
-              landlords and agents in one place.
+              A marketplace for buying, renting and listing homes — connecting buyers, renters, owners
+              and landlords in one place.
             </p>
             <div className="mt-5 space-y-1 text-sm text-muted-foreground">
               

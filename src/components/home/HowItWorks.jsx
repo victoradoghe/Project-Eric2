@@ -14,7 +14,7 @@ const STEPS = [
   {
     icon: MessageSquareText,
     title: 'Ask the person behind the listing',
-    body: 'Send an enquiry straight to the owner, landlord or agent. Every conversation stays private between the two of you.',
+    body: 'Send an enquiry straight to the owner or landlord. Every conversation stays private between the two of you.',
   },
   {
     icon: CalendarCheck,

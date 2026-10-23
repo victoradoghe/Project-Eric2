@@ -17,7 +17,7 @@ const FAQS = [
   },
   {
     q: 'How do I contact a listing owner?',
-    a: 'Sign in and use the contact form on the listing. Your message is stored against the listing and only the owner, landlord or agent behind it can read it.',
+    a: 'Sign in and use the contact form on the listing. Your message is stored against the listing and only the owner or landlord behind it can read it.',
   },
   {
     q: 'Is a viewing confirmed automatically?',

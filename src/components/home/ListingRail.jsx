@@ -8,7 +8,7 @@ export default function ListingRail({ title, subtitle, listings = [], viewAllHre
       <section className="dm-container py-12 sm:py-16">
         <h2 className="font-display text-2xl font-semibold text-foreground sm:text-3xl">{title}</h2>
         <p className="mt-4 rounded-2xl border border-dashed border-border bg-secondary/40 p-6 text-sm text-muted-foreground">
-          Nothing to show here yet. Listings appear as soon as an owner, landlord or agent publishes one.
+          Nothing to show here yet. Listings appear as soon as an owner or landlord publishes one.
         </p>
       </section>
     );

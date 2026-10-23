@@ -18,9 +18,6 @@ import Search from '@/pages/Search';
 import Rent from '@/pages/Rent';
 import Sell from '@/pages/Sell';
 import PropertyDetail from '@/pages/PropertyDetail';
-import Agents from '@/pages/Agents';
-import AgentProfile from '@/pages/AgentProfile';
-import Agencies from '@/pages/Agencies';
 import Mortgage from '@/pages/Mortgage';
 import HomeValues from '@/pages/HomeValues';
 import About from '@/pages/About';
@@ -78,9 +75,6 @@ function AppRoutes() {
         <Route path="/rent" element={<Rent />} />
         <Route path="/sell" element={<Sell />} />
         <Route path="/property/:id" element={<PropertyDetail />} />
-        <Route path="/agents" element={<Agents />} />
-        <Route path="/agents/:id" element={<AgentProfile />} />
-        <Route path="/agencies" element={<Agencies />} />
         <Route path="/mortgage" element={<Mortgage />} />
         <Route path="/home-values" element={<HomeValues />} />
         <Route path="/about" element={<About />} />

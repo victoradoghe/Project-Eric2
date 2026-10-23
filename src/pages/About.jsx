@@ -12,7 +12,7 @@ const PILLARS = [
   {
     icon: HeartHandshake,
     title: 'Straight to the person responsible',
-    body: 'Enquiries, viewing requests and applications go to the owner, landlord or agent behind the listing — never through a call centre.',
+    body: 'Enquiries, viewing requests and applications go to the owner or landlord behind the listing — never through a call centre.',
   },
   {
     icon: LineChart,
@@ -32,7 +32,7 @@ export default function About() {
       <h1 className="font-display text-3xl font-semibold">About {BRAND.name}</h1>
       <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
         {BRAND.name} is an independent property marketplace for buying, renting and listing homes. It brings
-        buyers, renters, owners, landlords and agents into one system so that a search, an enquiry and a
+        buyers, renters, owners and landlords into one system so that a search, an enquiry and a
         viewing request stay connected instead of scattering across inboxes.
       </p>
 

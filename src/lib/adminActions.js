@@ -125,28 +125,6 @@ export const verifyListingOwnership = async (actor, listing, verified) => {
   });
 };
 
-export const setAgentVerification = async (actor, agent, status) => {
-  await base44.entities.AgentProfile.update(agent.id, { verification_status: status });
-  await writeAudit(actor, {
-    action: `agent.verification_${status}`,
-    targetType: 'agent_profile',
-    targetId: agent.id,
-    targetLabel: agent.display_name,
-    details: `Verification status set to ${status}`,
-  });
-};
-
-export const setAgencyVerification = async (actor, agency, status) => {
-  await base44.entities.Agency.update(agency.id, { verification_status: status });
-  await writeAudit(actor, {
-    action: `agency.verification_${status}`,
-    targetType: 'agency',
-    targetId: agency.id,
-    targetLabel: agency.name,
-    details: `Verification status set to ${status}`,
-  });
-};
-
 export const resolveReport = async (actor, report, { status, note }) => {
   await base44.entities.Report.update(report.id, {
     status,
@@ -223,7 +201,6 @@ export const adminEditListing = async (actor, listing, { form, images }) => {
     description: form.description,
     owner_name: form.owner_name,
     owner_role: form.owner_role,
-    agency_name: form.agency_name || undefined,
   };
 
   if (listing.property_id) {
@@ -248,8 +225,6 @@ export const adminEditListing = async (actor, listing, { form, images }) => {
     accepts_applications: Boolean(form.accepts_applications),
     images: images || [],
     source: form.source,
-    agency_name: form.agency_name || undefined,
-    agent_name: form.source === 'agent' ? form.owner_name : undefined,
     owner_name: form.owner_name,
     owner_role: form.owner_role,
     property_type: form.property_type,

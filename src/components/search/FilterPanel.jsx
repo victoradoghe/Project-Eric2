@@ -24,11 +24,6 @@ const FURNISHED = [
   { value: 'unfurnished', label: 'Unfurnished' },
 ];
 
-const SOURCES = [
-  { value: 'agent', label: 'Listed by an agent' },
-  { value: 'owner', label: 'Listed by the owner' },
-];
-
 const NUMBER_KEYS = ['price_min', 'price_max', 'area_min', 'area_max', 'lot_min', 'year_min'];
 
 export default function FilterPanel({ filters, onChange, cities = [], onReset }) {
@@ -184,13 +179,6 @@ export default function FilterPanel({ filters, onChange, cities = [], onReset })
               value={filters.listed_within}
               onChange={(value) => onChange({ listed_within: value })}
               options={LISTED_WITHIN}
-            />
-            <SelectField
-              id="filter-source"
-              label="Listed by"
-              value={filters.source}
-              onChange={(value) => onChange({ source: value })}
-              options={SOURCES}
             />
           </AccordionContent>
         </AccordionItem>

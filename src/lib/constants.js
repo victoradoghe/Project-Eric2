@@ -84,7 +84,6 @@ export const ACCOUNT_ROLES = [
   { value: 'renter', label: 'Renter' },
   { value: 'owner', label: 'Owner or seller' },
   { value: 'landlord', label: 'Landlord' },
-  { value: 'agent', label: 'Real estate agent' },
 ];
 
 export const NOTIFICATION_FREQUENCIES = [

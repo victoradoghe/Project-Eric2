@@ -41,7 +41,6 @@ const emptyForm = (user) => ({
   open_house_at: '',
   accepts_applications: false,
   source: 'owner',
-  agency_name: '',
   owner_name: user?.full_name || '',
   owner_role: 'owner',
 });
@@ -115,8 +114,7 @@ export default function ListingEditor() {
           available_from: record.available_from || '',
           open_house_at: record.open_house_at || '',
           accepts_applications: Boolean(record.accepts_applications),
-          source: record.source || 'owner',
-          agency_name: record.agency_name || '',
+          source: 'owner',
           owner_name: record.owner_name || user?.full_name || '',
           owner_role: record.owner_role || 'owner',
         });
@@ -185,7 +183,6 @@ export default function ListingEditor() {
         owner_id: user.id,
         owner_name: form.owner_name,
         owner_role: form.owner_role,
-        agency_name: form.agency_name || undefined,
       };
 
       let resolvedPropertyId = propertyId;
@@ -214,10 +211,7 @@ export default function ListingEditor() {
         status: nextStatus,
         published_date:
           nextStatus === 'published' ? listing?.published_date || new Date().toISOString().slice(0, 10) : listing?.published_date,
-        source: form.source,
-        agency_name: form.agency_name || undefined,
-        agent_id: form.source === 'agent' ? user.id : undefined,
-        agent_name: form.source === 'agent' ? form.owner_name : undefined,
+        source: 'owner',
         owner_id: listing?.owner_id || user.id,
         owner_name: form.owner_name,
         owner_role: form.owner_role,

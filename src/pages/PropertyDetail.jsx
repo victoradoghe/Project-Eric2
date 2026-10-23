@@ -440,7 +440,7 @@ export default function PropertyDetail() {
             }
 
             <div className="mt-5 flex flex-col items-center text-center">
-              <h3 className="font-display text-base font-semibold">Contact the {listing.source === 'agent' ? 'agent' : 'owner'}</h3>
+              <h3 className="font-display text-base font-semibold">Contact the {listing.owner_role === 'landlord' ? 'landlord' : 'owner'}</h3>
               <p className="mt-1 text-xs text-muted-foreground">Send a message and they'll get back to you.</p>
               <div className="mt-4 w-full">
                 <InquiryForm listing={listing} compact />

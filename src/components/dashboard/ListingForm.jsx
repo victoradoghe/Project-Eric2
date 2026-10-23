@@ -218,23 +218,6 @@ export default function ListingForm({ form, setForm, images, setImages }) {
             </Field>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field id="l-source" label="Listed by">
-              <Select
-                id="l-source"
-                value={form.source}
-                onChange={set('source')}
-                options={[
-                  { value: 'owner', label: 'The owner or landlord' },
-                  { value: 'agent', label: 'An agent' },
-                ]}
-              />
-            </Field>
-            <Field id="l-agency" label="Agency or brokerage (if an agent lists it)">
-              <Input id="l-agency" value={form.agency_name} onChange={(event) => set('agency_name')(event.target.value)} />
-            </Field>
-          </div>
-
           {isRent ? (
             <CheckboxField
               id="l-applications"
@@ -256,7 +239,6 @@ export default function ListingForm({ form, setForm, images, setImages }) {
               options={[
                 { value: 'owner', label: 'Owner' },
                 { value: 'landlord', label: 'Landlord' },
-                { value: 'agent', label: 'Agent' },
               ]}
             />
           </Field>

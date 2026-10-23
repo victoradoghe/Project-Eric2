@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { to: '/dashboard/messages', label: 'Messages', icon: MessageSquare },
   { to: '/favorites', label: 'Saved homes', icon: Heart },
   { to: '/notifications', label: 'Notifications', icon: Bell },
-  { to: '/profile', label: 'Profile & agent page', icon: User },
+  { to: '/profile', label: 'Profile', icon: User },
 ];
 
 export default function DashboardLayout() {

@@ -19,8 +19,7 @@ export default function AdminOverview() {
       base44.entities.User.list({ limit: 100 }).catch(() => []),
       base44.entities.Report.count({ status: 'open' }).catch(() => 0),
       base44.entities.ContactMessage.count({ status: 'new' }).catch(() => 0),
-      base44.entities.AgentProfile.count({ verification_status: 'pending' }).catch(() => 0),
-    ]).then(([statusRows, properties, users, reports, messages, verifications]) => {
+    ]).then(([statusRows, properties, users, reports, messages]) => {
       if (!active) return;
       const rows = statusRows?.rows || [];
       setListingStatus(rows);
@@ -30,7 +29,6 @@ export default function AdminOverview() {
         users: Array.isArray(users) ? users.length : users?.items?.length || 0,
         reports,
         messages,
-        verifications,
       });
     });
 
@@ -68,7 +66,6 @@ export default function AdminOverview() {
     { label: 'Accounts', value: stats.users, icon: Users },
     { label: 'Open reports', value: stats.reports, icon: Flag },
     { label: 'New contact messages', value: stats.messages, icon: Inbox },
-    { label: 'Verifications waiting', value: stats.verifications, icon: Users },
   ];
 
   return (

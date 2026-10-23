@@ -20,7 +20,6 @@ const NAV = [
   { to: '/search?listing_type=sale', label: 'Buy' },
   { to: '/rent', label: 'Rent' },
   { to: '/sell', label: 'Sell' },
-  { to: '/agents', label: 'Agents' },
 ];
 
 const linkClass = ({ isActive }) =>

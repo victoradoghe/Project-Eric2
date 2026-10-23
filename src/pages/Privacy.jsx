@@ -7,7 +7,7 @@ const SECTIONS = [
   },
   {
     title: 'What is public',
-    body: 'Published listings, agent profiles and agency profiles are public, including the contact details an agent chooses to publish. Draft listings, your enquiries, viewing requests, applications, saved homes, saved searches, notifications and valuation history are private to your account.',
+    body: 'Published listings are public, including the contact details an owner or landlord chooses to publish. Draft listings, your enquiries, viewing requests, applications, saved homes, saved searches, notifications and valuation history are private to your account.',
   },
   {
     title: 'Who can read your data',

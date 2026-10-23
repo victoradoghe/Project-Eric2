@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, BadgeCheck, Flag, Inbox, Mail, ShieldQuestion } from 'lucide-react';
+import { AlertTriangle, Flag, Inbox, Mail } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -9,8 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   resolveReport,
-  setAgencyVerification,
-  setAgentVerification,
   updateContactMessage,
 } from '@/lib/adminActions';
 import { formatDateTime } from '@/lib/format';
@@ -27,24 +25,18 @@ export default function AdminReports() {
   const { toast } = useToast();
   const [reports, setReports] = useState([]);
   const [messages, setMessages] = useState([]);
-  const [agents, setAgents] = useState([]);
-  const [agencies, setAgencies] = useState([]);
   const [notes, setNotes] = useState({});
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [reportPage, messagePage, agentPage, agencyPage] = await Promise.all([
+      const [reportPage, messagePage] = await Promise.all([
         base44.entities.Report.filter({}, { sort: '-created_date', limit: 100 }),
         base44.entities.ContactMessage.filter({}, { sort: '-created_date', limit: 100 }),
-        base44.entities.AgentProfile.filter({ verification_status: 'pending' }, { limit: 50 }),
-        base44.entities.Agency.filter({ verification_status: 'pending' }, { limit: 50 }),
       ]);
       setReports(reportPage?.items || []);
       setMessages(messagePage?.items || []);
-      setAgents(agentPage?.items || []);
-      setAgencies(agencyPage?.items || []);
     } catch (error) {
       toast({ title: 'Could not load the moderation data', description: error?.message, variant: 'destructive' });
     } finally {
@@ -145,65 +137,6 @@ export default function AdminReports() {
                   onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))}
                   placeholder="What did you check, and what did you decide?"
                 />
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-          <BadgeCheck className="h-4 w-4 text-primary" />
-          Verification requests
-        </h2>
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          Marking a profile verified states that you have checked the licence details. Approval here is what
-          makes a verified badge appear — nothing else does.
-        </p>
-        {!agents.length && !agencies.length ? (
-          <p className="mt-3 rounded-2xl border border-dashed border-border bg-white p-6 text-sm text-muted-foreground">
-            No verification requests are waiting.
-          </p>
-        ) : null}
-        <div className="mt-4 space-y-3">
-          {agents.map((agent) => (
-            <article key={agent.id} className="dm-card flex flex-wrap items-center justify-between gap-3 p-5">
-              <div>
-                <p className="font-semibold">{agent.display_name}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Agent · {agent.agency_name || 'independent'}
-                  {agent.license_number ? ` · licence ${agent.license_number}` : ' · no licence number supplied'}
-                  {agent.license_state ? ` (${agent.license_state})` : ''}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => run(() => setAgentVerification(user, agent, 'verified'), 'Agent verified')}>
-                  <BadgeCheck className="mr-1.5 h-3.5 w-3.5" />
-                  Verify
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => run(() => setAgentVerification(user, agent, 'unverified'), 'Verification removed')}>
-                  <ShieldQuestion className="mr-1.5 h-3.5 w-3.5" />
-                  Not verified
-                </Button>
-              </div>
-            </article>
-          ))}
-
-          {agencies.map((agency) => (
-            <article key={agency.id} className="dm-card flex flex-wrap items-center justify-between gap-3 p-5">
-              <div>
-                <p className="font-semibold">{agency.name}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Agency · {[agency.city, agency.state].filter(Boolean).join(', ') || 'location not stated'}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => run(() => setAgencyVerification(user, agency, 'verified'), 'Agency verified')}>
-                  Verify
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => run(() => setAgencyVerification(user, agency, 'unverified'), 'Verification removed')}>
-                  Not verified
-                </Button>
               </div>
             </article>
           ))}

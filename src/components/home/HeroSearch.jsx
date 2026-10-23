@@ -55,7 +55,7 @@ export default function HeroSearch() {
           </h1>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-white/80">
             Search verified-style listings, compare neighbourhoods, and talk directly to the owners and
-            agents behind each home.
+            landlords behind each home.
           </p>
         </div>
 

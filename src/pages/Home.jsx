@@ -91,7 +91,7 @@ export default function Home() {
           <div className="rounded-2xl border border-dashed border-border bg-secondary/40 p-10 text-center">
             <p className="font-display text-lg font-semibold">No homes are listed yet</p>
             <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
-              As soon as an owner, landlord or agent publishes a listing it appears here, in search and on its
+              As soon as an owner or landlord publishes a listing it appears here, in search and on its
               own page. If you are setting the marketplace up, an administrator can load clearly labelled sample
               listings from the administration area.
             </p>
@@ -111,7 +111,7 @@ export default function Home() {
         <>
           <ListingRail
             title="Featured homes"
-            subtitle="A selection of listings promoted by owners and agents across the marketplace."
+            subtitle="A selection of listings promoted by owners and landlords across the marketplace."
             listings={featuredRail}
             viewAllHref="/search?listing_type=sale"
             viewAllLabel="Browse all homes"

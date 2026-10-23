@@ -16,7 +16,7 @@ import ImageUploader from '@/components/dashboard/ImageUploader';
 
 /**
  * Lets the website administrator update the photos on any listing from the public
- * property page. Only the admin role sees this control — buyers, sellers and agents
+ * property page. Only the admin role sees this control — buyers, sellers and landlords
  * never do.
  */
 export default function AdminPhotoEditor({ listing, onSaved }) {

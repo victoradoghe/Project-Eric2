@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, Upload } from 'lucide-react';
 
 const POINTS = [
-  'Publish a listing yourself, or invite the agent who handles your sale',
+  'Publish a listing yourself in a few minutes',
   'Add photos, price, features and availability, then submit for review',
   'Every enquiry, viewing request and rental application lands in one inbox',
 ];
@@ -14,7 +14,7 @@ export default function OwnerCTA() {
         <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-primary/40 blur-3xl" />
         <div className="relative grid gap-8 lg:grid-cols-[1.2fr_1fr] lg:items-center">
           <div>
-            <span className="dm-chip border-white/25 bg-white/10 text-white/85">For owners and agents</span>
+            <span className="dm-chip border-white/25 bg-white/10 text-white/85">For owners and landlords</span>
             <h2 className="mt-5 font-display text-3xl font-semibold leading-tight sm:text-4xl">
               List your property on Dwellmark
             </h2>

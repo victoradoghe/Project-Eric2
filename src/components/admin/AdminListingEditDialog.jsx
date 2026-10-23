@@ -45,8 +45,7 @@ const emptyForm = (listing) => ({
   available_from: listing?.available_from || '',
   open_house_at: listing?.open_house_at || '',
   accepts_applications: Boolean(listing?.accepts_applications),
-  source: listing?.source || 'owner',
-  agency_name: listing?.agency_name || '',
+  source: 'owner',
   owner_name: listing?.owner_name || '',
   owner_role: listing?.owner_role || 'owner',
 });

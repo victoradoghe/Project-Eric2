@@ -152,7 +152,7 @@ export default function ViewingRequestForm({ listing, onCreated }) {
         {sending ? 'Sending…' : 'Request a viewing'}
       </Button>
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Requests are shown as pending until the owner or agent confirms. Dwellmark does not confirm
+        Requests are shown as pending until the owner or landlord confirms. Dwellmark does not confirm
         viewings on their behalf.
       </p>
     </form>

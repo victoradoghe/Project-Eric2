@@ -17,7 +17,6 @@ export const buildSearchText = (source = {}) => {
     (source.amenities || []).join(' '),
     source.parking,
     source.owner_name,
-    source.agency_name,
   ];
   return parts.filter(Boolean).join(' ').toLowerCase().replace(/\s+/g, ' ').trim();
 };

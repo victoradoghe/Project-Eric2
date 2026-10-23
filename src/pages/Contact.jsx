@@ -14,7 +14,6 @@ const TOPICS = [
   { value: 'general', label: 'General question' },
   { value: 'listing_help', label: 'Help with a listing' },
   { value: 'report_problem', label: 'Report a problem' },
-  { value: 'agent_support', label: 'Agent or agency support' },
   { value: 'privacy', label: 'Privacy request' },
   { value: 'billing', label: 'Account or billing question' },
 ];

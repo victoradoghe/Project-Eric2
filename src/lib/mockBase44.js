@@ -43,152 +43,12 @@ const INITIAL_PROPERTIES = INITIAL_LISTINGS.map((item) => ({
   parking: item.parking,
   amenities: item.amenities || [],
   description: item.description,
-  owner_id: 'agent-1',
+  owner_id: 'owner-1',
   owner_name: item.owner_name || 'Elena Rostova',
-  owner_role: item.owner_role || 'agent',
-  agency_name: item.agency_name || 'Dwellmark Premier',
+  owner_role: item.owner_role || 'owner',
   ownership_verified: true,
   is_demo: true,
 }));
-
-const INITIAL_AGENCIES = [
-  {
-    id: 'agency-1',
-    name: 'Dwellmark Premier',
-    city: 'Austin',
-    state: 'TX',
-    address: '100 Congress Ave, Suite 1200, Austin, TX 78701',
-    phone: '+1 (512) 555-0199',
-    email: 'premier@dwellmark.example',
-    description: 'Premier residential sales, modern estates, and downtown high-rise condominiums across Greater Austin.',
-    verified: true,
-    created_date: '2025-01-10T10:00:00Z',
-  },
-  {
-    id: 'agency-2',
-    name: 'Austin Metro Realty',
-    city: 'Austin',
-    state: 'TX',
-    address: '1504 S Congress Ave, Austin, TX 78704',
-    phone: '+1 (512) 555-0144',
-    email: 'contact@austinmetro.example',
-    description: 'Specializing in Zilker, Bouldin Creek, East Austin, and vibrant urban neighborhood properties.',
-    verified: true,
-    created_date: '2025-02-14T10:00:00Z',
-  },
-  {
-    id: 'agency-3',
-    name: 'Lone Star Living',
-    city: 'Dallas',
-    state: 'TX',
-    address: '2200 Ross Ave, Dallas, TX 75201',
-    phone: '+1 (214) 555-0188',
-    email: 'info@lonestarliving.example',
-    description: 'Boutique brokerage representing architectural homes, historic bungalows, and luxury leases.',
-    verified: true,
-    created_date: '2025-03-01T10:00:00Z',
-  },
-];
-
-const INITIAL_AGENTS = [
-  {
-    id: 'agent-1',
-    user_id: 'user-agent-1',
-    display_name: 'Elena Rostova',
-    agency_name: 'Dwellmark Premier',
-    agency_id: 'agency-1',
-    city: 'Austin',
-    state: 'TX',
-    phone: '+1 (512) 555-0121',
-    email: 'elena@dwellmark.example',
-    photo_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
-    avatar_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
-    license_number: 'TX-724189',
-    years_experience: 11,
-    service_areas: ['Downtown Austin', 'Zilker', 'Barton Hills', 'Tarrytown', 'West Lake Hills'],
-    specialties: ['Luxury Homes', 'Waterfront', 'Relocation', 'High-Rise Condos'],
-    bio: 'With over a decade of luxury real estate advisory in Austin, Elena helps buyers, sellers, and investors find exceptional properties with confidence.',
-    verified: true,
-    verification_status: 'verified',
-    is_demo: true,
-    created_date: '2025-01-15T08:00:00Z',
-  },
-  {
-    id: 'agent-2',
-    user_id: 'user-agent-2',
-    display_name: 'Marcus Chen',
-    agency_name: 'Austin Metro Realty',
-    agency_id: 'agency-2',
-    city: 'Austin',
-    state: 'TX',
-    phone: '+1 (512) 555-0177',
-    email: 'marcus@austinmetro.example',
-    photo_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-    avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-    license_number: 'TX-689320',
-    years_experience: 8,
-    service_areas: ['South Congress', 'Bouldin', 'Travis Heights', 'East Austin', 'Mueller'],
-    specialties: ['Modern Bungalows', 'Urban Infill', 'First-Time Buyers', 'New Construction'],
-    bio: 'Marcus combines rigorous neighborhood market analysis with personalized search curation to find dream urban residences.',
-    verified: true,
-    verification_status: 'verified',
-    is_demo: true,
-    created_date: '2025-02-01T08:00:00Z',
-  },
-  {
-    id: 'agent-3',
-    user_id: 'user-agent-3',
-    display_name: 'Sarah Jenkins',
-    agency_name: 'Dwellmark Premier',
-    agency_id: 'agency-1',
-    city: 'Austin',
-    state: 'TX',
-    phone: '+1 (512) 555-0133',
-    email: 'sarah.j@dwellmark.example',
-    photo_url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80',
-    avatar_url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80',
-    license_number: 'TX-810442',
-    years_experience: 6,
-    service_areas: ['Domain', 'North Austin', 'Round Rock', 'Cedar Park'],
-    specialties: ['Suburban Homes', 'Relocation', 'Rental Investments', 'Single Family'],
-    bio: 'Sarah is passionate about guiding families and tech professionals to neighborhood communities that balance lifestyle, schools, and commute.',
-    verified: true,
-    verification_status: 'verified',
-    is_demo: true,
-    created_date: '2025-02-10T08:00:00Z',
-  },
-  {
-    id: 'agent-4',
-    user_id: 'user-agent-4',
-    display_name: 'David Vance',
-    agency_name: 'Lone Star Living',
-    agency_id: 'agency-3',
-    city: 'Dallas',
-    state: 'TX',
-    phone: '+1 (214) 555-0155',
-    email: 'david@lonestarliving.example',
-    photo_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-    avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-    license_number: 'TX-590214',
-    years_experience: 14,
-    service_areas: ['Uptown Dallas', 'Preston Hollow', 'Lakewood', 'Highland Park'],
-    specialties: ['Architectural Estates', 'Historic Preservation', 'Land Parcels'],
-    bio: 'David brings 14 years of premier property transaction expertise, specializing in historic restorations and bespoke estate developments.',
-    verified: true,
-    verification_status: 'verified',
-    is_demo: true,
-    created_date: '2025-02-20T08:00:00Z',
-  },
-];
-
-const INITIAL_REVIEWS = [
-  { id: 'rev-1', agent_profile_id: 'agent-1', rating: 5, client_name: 'Jonathan Miller', comment: 'Elena was extraordinary throughout the entire purchase.', created_date: '2026-09-01T12:00:00Z' },
-  { id: 'rev-2', agent_profile_id: 'agent-1', rating: 5, client_name: 'Claire Dupont', comment: 'Flawless communication and negotiated a fantastic rate.', created_date: '2026-09-12T12:00:00Z' },
-  { id: 'rev-3', agent_profile_id: 'agent-2', rating: 5, client_name: 'Tariq Al-Mansoor', comment: 'Marcus knows every street in East Austin inside out.', created_date: '2026-08-20T12:00:00Z' },
-  { id: 'rev-4', agent_profile_id: 'agent-2', rating: 4, client_name: 'Amanda Brooks', comment: 'Very responsive and patient with all our questions.', created_date: '2026-09-15T12:00:00Z' },
-  { id: 'rev-5', agent_profile_id: 'agent-3', rating: 5, client_name: 'Kevin Zhao', comment: 'Found us our dream home near the Arboretum in record time!', created_date: '2026-09-10T12:00:00Z' },
-  { id: 'rev-6', agent_profile_id: 'agent-4', rating: 5, client_name: 'Rachel Hughes', comment: 'Top tier knowledge of Dallas architectural estates.', created_date: '2026-08-05T12:00:00Z' },
-];
 
 const DEFAULT_USER = {
   id: 'demo-user-1',
@@ -292,24 +152,7 @@ function sortItems(items, sortExpr) {
 
 function createEntityStore(storageKey, initialData) {
   const getStore = () => {
-    let data = storage.get(storageKey, initialData);
-    if (storageKey === 'agents' && Array.isArray(data)) {
-      data = data.map((agent) => ({
-        ...agent,
-        photo_url: agent.photo_url || agent.avatar_url,
-        verification_status: agent.verification_status || (agent.verified ? 'verified' : 'unverified'),
-        service_areas: Array.isArray(agent.service_areas)
-          ? agent.service_areas
-          : typeof agent.service_areas === 'string'
-            ? agent.service_areas.split(',').map((s) => s.trim()).filter(Boolean)
-            : [],
-        specialties: Array.isArray(agent.specialties)
-          ? agent.specialties
-          : typeof agent.specialties === 'string'
-            ? agent.specialties.split(',').map((s) => s.trim()).filter(Boolean)
-            : [],
-      }));
-    }
+    const data = storage.get(storageKey, initialData);
     return data;
   };
   const saveStore = (data) => storage.set(storageKey, data);
@@ -455,9 +298,6 @@ function createEntityStore(storageKey, initialData) {
 export function createMockBase44Client() {
   const listingStore = createEntityStore('listings', INITIAL_LISTINGS);
   const propertyStore = createEntityStore('properties', INITIAL_PROPERTIES);
-  const agencyStore = createEntityStore('agencies', INITIAL_AGENCIES);
-  const agentStore = createEntityStore('agents', INITIAL_AGENTS);
-  const reviewStore = createEntityStore('reviews', INITIAL_REVIEWS);
   const favoriteStore = createEntityStore('favorites', []);
   const inquiryStore = createEntityStore('inquiries', []);
   const viewingStore = createEntityStore('viewing_requests', []);
@@ -469,7 +309,7 @@ export function createMockBase44Client() {
       user_id: DEFAULT_USER.id,
       type: 'system',
       title: 'Welcome to Dwellmark',
-      body: 'Explore Austin & Texas homes, calculate your mortgage, or browse vetted local agents.',
+      body: 'Explore Austin & Texas homes, calculate your mortgage, or estimate your home value.',
       read: false,
       created_date: new Date().toISOString(),
     },
@@ -567,9 +407,6 @@ export function createMockBase44Client() {
     entities: {
       Listing: listingStore,
       Property: propertyStore,
-      Agency: agencyStore,
-      AgentProfile: agentStore,
-      Review: reviewStore,
       Favorite: favoriteStore,
       Inquiry: inquiryStore,
       ViewingRequest: viewingStore,

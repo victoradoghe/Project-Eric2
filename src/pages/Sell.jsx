@@ -36,13 +36,13 @@ export default function Sell() {
       <section className="border-b border-border bg-secondary/50">
         <div className="dm-container py-14 sm:py-20">
           <div className="max-w-2xl">
-            <span className="dm-chip">For owners, landlords and agents</span>
+            <span className="dm-chip">For owners and landlords</span>
             <h1 className="mt-5 font-display text-3xl font-semibold leading-tight sm:text-4xl">
               Sell or rent out your property on Dwellmark
             </h1>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
               Create a listing yourself in a few minutes. You stay in control of the price, the description and
-              who you respond to, and every enquiry is yours — Dwellmark does not act as your agent.
+              who you respond to, and every enquiry is yours — Dwellmark does not act on your behalf.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Button asChild size="lg">
@@ -102,7 +102,7 @@ export default function Sell() {
             </dl>
             <p className="mt-5 flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
               <BadgeCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-              Listing moderation, agent verification, ownership verification and valuation estimates are four
+              Listing moderation, ownership verification and valuation estimates are three
               separate things. Dwellmark never presents one as another.
             </p>
           </div>
