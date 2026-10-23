@@ -9,6 +9,7 @@ import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { safeReturnTo } from "@/lib/authReturnTo";
+import { isAdminAccount, ADMIN_HOME } from "@/lib/adminAccounts";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -35,6 +36,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
+      const adminLogin = isAdminAccount(email, password);
       if (isSupabaseConfigured) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -68,7 +70,7 @@ export default function Login() {
           // Don't block login if the notification can't be created.
         }
       }
-      window.location.href = returnTo;
+      window.location.href = adminLogin ? ADMIN_HOME : returnTo;
     } catch (err) {
       setError(err.message || "Invalid email or password");
     } finally {

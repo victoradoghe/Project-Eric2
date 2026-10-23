@@ -1,5 +1,6 @@
 import { SAMPLE_LISTINGS } from '@/lib/sampleListings';
 import { listingSearchFields } from '@/lib/listingFields';
+import { isAdminAccount, withAdminRole } from '@/lib/adminAccounts';
 
 // Normalize sample listings so all queryable & display fields are present
 const INITIAL_LISTINGS = SAMPLE_LISTINGS.map((item, idx) => {
@@ -498,16 +499,19 @@ export function createMockBase44Client() {
     auth: {
       async me() {
         const u = storage.get('auth_user', DEFAULT_USER);
-        return u;
+        return withAdminRole(u);
       },
       async isAuthenticated() {
         return Boolean(storage.get('auth_user', DEFAULT_USER));
       },
       async loginViaEmailPassword(email, password) {
-        const user = {
+        const admin = isAdminAccount(email, password);
+        const user = withAdminRole({
           ...DEFAULT_USER,
           email: email || DEFAULT_USER.email,
-        };
+          full_name: admin ? 'Admin' : DEFAULT_USER.full_name,
+          role: admin ? 'admin' : DEFAULT_USER.role,
+        });
         storage.set('auth_user', user);
         return user;
       },

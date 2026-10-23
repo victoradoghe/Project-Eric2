@@ -39,9 +39,9 @@ export default function SiteHeader() {
     setOpen(false);
     if (typeof auth.logout === 'function') {
       await auth.logout();
-    } else {
-      await base44.auth.logout();
+      return;
     }
+    await base44.auth.logout();
     navigate('/');
   };
 

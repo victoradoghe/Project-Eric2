@@ -2,13 +2,14 @@ import React, { createContext, useState, useContext, useEffect, useCallback } fr
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { ADMIN_LOGIN_PATH, withAdminRole } from '@/lib/adminAccounts';
 
 const AuthContext = createContext();
 
 export function mapSupabaseUser(sbUser) {
   if (!sbUser) return null;
   const meta = sbUser.user_metadata || {};
-  return {
+  const base = {
     ...meta,
     id: sbUser.id,
     email: sbUser.email || meta.email || '',
@@ -20,6 +21,7 @@ export function mapSupabaseUser(sbUser) {
     avatar_url: meta.avatar_url || '',
     role: sbUser.app_metadata?.role || meta.role || 'user',
   };
+  return withAdminRole(base);
 }
 
 export const AuthProvider = ({ children }) => {
@@ -57,8 +59,9 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoadingAuth(true);
       const currentUser = await base44.auth.me();
-      setUser(currentUser);
-      setIsAuthenticated(true);
+      const elevated = withAdminRole(currentUser);
+      setUser(elevated);
+      setIsAuthenticated(Boolean(elevated));
       setAuthError(null);
     } catch (error) {
       setIsAuthenticated(false);
@@ -159,6 +162,7 @@ export const AuthProvider = ({ children }) => {
   }, [applySupabaseUser, checkAppState]);
 
   const logout = async (shouldRedirect = true) => {
+    const wasAdmin = user?.role === 'admin';
     setUser(null);
     setIsAuthenticated(false);
     setAuthChecked(true);
@@ -169,12 +173,14 @@ export const AuthProvider = ({ children }) => {
       } catch {
         // Session is already gone locally; nothing else to clear.
       }
-      if (shouldRedirect) window.location.href = '/';
+      if (shouldRedirect) {
+        window.location.href = wasAdmin ? ADMIN_LOGIN_PATH : '/';
+      }
       return;
     }
 
     if (shouldRedirect) {
-      base44.auth.logout(window.location.href);
+      base44.auth.logout(wasAdmin ? ADMIN_LOGIN_PATH : window.location.href);
     } else {
       base44.auth.logout();
     }
