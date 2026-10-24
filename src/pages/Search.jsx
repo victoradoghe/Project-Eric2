@@ -64,24 +64,32 @@ export default function Search({ defaultListingType = '' }) {
     let active = true;
     setLoading(true);
     setError(null);
-    cityOptions()
-      .then((known) => searchListings({ filters, sort, cities: known }))
-      .then((page) => {
-        if (!active) return;
-        setItems(page.items);
-        setCursor(page.next_cursor);
-        setHasMore(page.has_more);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setItems([]);
-        setError(err?.message || 'The search could not be completed. Please try again.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const runSearch = () =>
+      cityOptions()
+        .then((known) => searchListings({ filters, sort, cities: known }))
+        .then((page) => {
+          if (!active) return;
+          setItems(page.items);
+          setCursor(page.next_cursor);
+          setHasMore(page.has_more);
+        })
+        .catch((err) => {
+          if (!active) return;
+          setItems([]);
+          setError(err?.message || 'The search could not be completed. Please try again.');
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+
+    runSearch();
+    const unsubscribe = base44.entities.Listing.subscribe(() => {
+      runSearch();
+    });
+
     return () => {
       active = false;
+      unsubscribe?.();
     };
   }, [searchKey]); // eslint-disable-line react-hooks/exhaustive-deps
 

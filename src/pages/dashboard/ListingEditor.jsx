@@ -10,6 +10,8 @@ import ListingForm from '@/components/dashboard/ListingForm';
 import { statusLabel } from '@/lib/constants';
 import { listingSearchFields } from '@/lib/listingFields';
 
+const NEW_DRAFT_KEY = 'dwellmark_new_listing_draft';
+
 const emptyForm = (user) => ({
   title: '',
   property_type: 'house',
@@ -52,7 +54,7 @@ export default function ListingEditor() {
   const navigate = useNavigate();
   const { user } = useAuth() || {};
   const { toast } = useToast();
-  const [form, setForm] = useState(emptyForm(user));
+  const [form, setForm] = useState(() => emptyForm(user));
   const [images, setImages] = useState([]);
   const [listing, setListing] = useState(null);
   const [propertyId, setPropertyId] = useState(null);
@@ -62,24 +64,37 @@ export default function ListingEditor() {
 
   useEffect(() => {
     if (!id) {
-      setForm(emptyForm(user));
-      setImages([]);
+      let restored = null;
+      try {
+        const raw = window.sessionStorage.getItem(NEW_DRAFT_KEY);
+        if (raw) restored = JSON.parse(raw);
+      } catch {
+        restored = null;
+      }
+      if (restored?.form) {
+        setForm({ ...emptyForm(user), ...restored.form });
+        setImages(Array.isArray(restored.images) ? restored.images : []);
+      } else {
+        setForm(emptyForm(user));
+        setImages([]);
+      }
       setListing(null);
       setPropertyId(null);
       setLoading(false);
       return;
     }
+
     let active = true;
     setLoading(true);
     base44.entities.Listing.get(id)
       .then(async (record) => {
-        if (!active) return;
+        if (!active || !record) return;
         setListing(record);
         setPropertyId(record.property_id);
         setImages(record.images || []);
         let property = null;
         try {
-          property = await base44.entities.Property.get(record.property_id);
+          property = record.property_id ? await base44.entities.Property.get(record.property_id) : null;
         } catch (error) {
           property = null;
         }
@@ -129,10 +144,34 @@ export default function ListingEditor() {
     return () => {
       active = false;
     };
-  }, [id, user, navigate, toast]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (id || listing?.id) return;
+    try {
+      window.sessionStorage.setItem(NEW_DRAFT_KEY, JSON.stringify({ form, images }));
+    } catch {
+      // sessionStorage is best-effort
+    }
+  }, [id, listing?.id, form, images]);
+
+  const handleImagesChange = async (nextImages) => {
+    setImages(nextImages);
+    const targetListingId = listing?.id || id;
+    if (!targetListingId) return;
+    try {
+      if (propertyId) {
+        await base44.entities.Property.update(propertyId, { images: nextImages }).catch(() => {});
+      }
+      const updated = await base44.entities.Listing.update(targetListingId, { images: nextImages });
+      setListing((current) => (current ? { ...current, ...(updated || {}), images: nextImages } : current));
+    } catch {
+      // explicit save button can still persist
+    }
+  };
 
   const checkDuplicates = useCallback(
-    async (nextStatus) => {
+    async () => {
       if (!form.address || !form.city) return [];
       try {
         const page = await base44.entities.Listing.filter(
@@ -179,6 +218,7 @@ export default function ListingEditor() {
         furnished: form.furnished || undefined,
         pets_allowed: form.pets_allowed || undefined,
         amenities: form.amenities,
+        images,
         description: form.description,
         owner_id: user.id,
         owner_name: form.owner_name,
@@ -244,6 +284,11 @@ export default function ListingEditor() {
         saved = await base44.entities.Listing.create(listingPayload);
       }
       setListing(saved);
+      try {
+        window.sessionStorage.removeItem(NEW_DRAFT_KEY);
+      } catch {
+        // ignore
+      }
 
       if (nextStatus === 'pending_review') {
         toast({
@@ -383,7 +428,7 @@ export default function ListingEditor() {
         </div>
       ) : null}
 
-      <ListingForm form={form} setForm={setForm} images={images} setImages={setImages} />
+      <ListingForm form={form} setForm={setForm} images={images} setImages={handleImagesChange} />
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-white p-5">
         <p className="text-xs leading-relaxed text-muted-foreground">

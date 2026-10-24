@@ -26,6 +26,7 @@ import SimilarProperties from '@/components/property/SimilarProperties';
 import AdminPhotoEditor from '@/components/property/AdminPhotoEditor';
 import InlinePriceEditor from '@/components/admin/InlinePriceEditor';
 import { useAuth } from '@/lib/AuthContext';
+import { base44 } from '@/api/base44Client';
 import { getListing, registerListingView, similarListings, displayAddress } from '@/lib/listingsApi';
 import { formatDate, formatMoney, formatPrice, formatRelative, petPremium } from '@/lib/format';
 import { MORTGAGE_DEFAULTS, petPolicyLabel, rentFrequencyLabel, statusLabel } from '@/lib/constants';
@@ -82,6 +83,29 @@ export default function PropertyDetail() {
 
     return () => {
       active = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return undefined;
+    let active = true;
+    const unsubscribe = base44.entities.Listing.subscribe(() => {
+      getListing(id)
+        .then(async (record) => {
+          if (!active || !record) return;
+          setListing(record);
+          try {
+            const matches = await similarListings(record);
+            if (active) setSimilar(matches);
+          } catch {
+            // keep existing similar list
+          }
+        })
+        .catch(() => {});
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
     };
   }, [id]);
 

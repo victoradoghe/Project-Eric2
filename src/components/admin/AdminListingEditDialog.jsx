@@ -57,15 +57,16 @@ export default function AdminListingEditDialog({ listing, open, onOpenChange, on
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const listingId = listing?.id;
 
   useEffect(() => {
-    if (!open || !listing) return;
+    if (!open || !listingId) return;
     setLoading(true);
     let active = true;
     base44.entities.Listing
-      .get(listing.id)
+      .get(listingId)
       .then(async (record) => {
-        if (!active) return;
+        if (!active || !record) return;
         let property = null;
         try {
           property = record.property_id ? await base44.entities.Property.get(record.property_id) : null;
@@ -101,7 +102,20 @@ export default function AdminListingEditDialog({ listing, open, onOpenChange, on
     return () => {
       active = false;
     };
-  }, [open, listing, toast]);
+  }, [open, listingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleImagesChange = async (nextImages) => {
+    setImages(nextImages);
+    if (!listingId) return;
+    try {
+      if (listing?.property_id) {
+        await base44.entities.Property.update(listing.property_id, { images: nextImages }).catch(() => {});
+      }
+      await base44.entities.Listing.update(listingId, { images: nextImages });
+    } catch {
+      // full save button can still persist
+    }
+  };
 
   const save = async () => {
     if (!form.title || !form.city || !form.state || form.price === '') {
@@ -142,7 +156,7 @@ export default function AdminListingEditDialog({ listing, open, onOpenChange, on
           </div>
         ) : (
           <>
-            <ListingForm form={form} setForm={setForm} images={images} setImages={setImages} />
+            <ListingForm form={form} setForm={setForm} images={images} setImages={handleImagesChange} />
             <div className="flex justify-end gap-2 border-t border-border pt-4">
               <Button variant="outline" onClick={() => onOpenChange?.(false)} disabled={saving}>
                 Cancel

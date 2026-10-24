@@ -21,34 +21,42 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      base44.entities.Listing.filter(
-        { ...availableClause(), featured: true },
-        { sort: '-published_date', limit: 8 },
-      ),
-      base44.entities.Listing.filter({ ...availableClause() }, { sort: '-published_date', limit: 8 }),
-      base44.entities.Listing.filter(
-        { ...availableClause(), listing_type: 'rent' },
-        { sort: '-published_date', limit: 8 },
-      ),
-    ])
-      .then(([featured, recent, rentals]) => {
-        if (!active) return;
-        setListings({
-          featured: featured?.items || [],
-          recent: recent?.items || [],
-          rentals: rentals?.items || [],
+    const fetchHomeListings = () =>
+      Promise.all([
+        base44.entities.Listing.filter(
+          { ...availableClause(), featured: true },
+          { sort: '-published_date', limit: 8 },
+        ),
+        base44.entities.Listing.filter({ ...availableClause() }, { sort: '-published_date', limit: 8 }),
+        base44.entities.Listing.filter(
+          { ...availableClause(), listing_type: 'rent' },
+          { sort: '-published_date', limit: 8 },
+        ),
+      ])
+        .then(([featured, recent, rentals]) => {
+          if (!active) return;
+          setListings({
+            featured: featured?.items || [],
+            recent: recent?.items || [],
+            rentals: rentals?.items || [],
+          });
+          setFailed(false);
+        })
+        .catch(() => {
+          if (active) setFailed(true);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
         });
-        setFailed(false);
-      })
-      .catch(() => {
-        if (active) setFailed(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+
+    fetchHomeListings();
+    const unsubscribe = base44.entities.Listing.subscribe(() => {
+      fetchHomeListings();
+    });
+
     return () => {
       active = false;
+      unsubscribe?.();
     };
   }, []);
 

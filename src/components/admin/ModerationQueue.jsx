@@ -66,7 +66,16 @@ export default function ModerationQueue() {
 
   useEffect(() => {
     load();
-  }, [load]);
+    const unsubscribe = base44.entities.Listing.subscribe(() => {
+      base44.entities.Listing
+        .filter({ status }, { sort: '-created_date', limit: 100 })
+        .then((page) => setListings(page?.items || []))
+        .catch(() => {});
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [load, status]);
 
   const run = async (action, listing) => {
     try {

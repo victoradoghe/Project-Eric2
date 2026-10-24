@@ -198,6 +198,7 @@ export const adminEditListing = async (actor, listing, { form, images }) => {
     furnished: form.furnished || undefined,
     pets_allowed: form.pets_allowed || undefined,
     amenities: form.amenities,
+    images: images || [],
     description: form.description,
     owner_name: form.owner_name,
     owner_role: form.owner_role,

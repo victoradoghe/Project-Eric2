@@ -25,23 +25,31 @@ export default function Rent() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    base44.entities.Listing.filter(
-      { listing_type: 'rent', ...availableClause() },
-      { sort: '-published_date', limit: 9 },
-    )
-      .then((page) => {
-        if (!active) return;
-        setListings(page?.items || []);
-        setError(null);
-      })
-      .catch((err) => {
-        if (active) setError(err?.message || 'Rentals could not be loaded.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const fetchRentals = () =>
+      base44.entities.Listing.filter(
+        { listing_type: 'rent', ...availableClause() },
+        { sort: '-published_date', limit: 9 },
+      )
+        .then((page) => {
+          if (!active) return;
+          setListings(page?.items || []);
+          setError(null);
+        })
+        .catch((err) => {
+          if (active) setError(err?.message || 'Rentals could not be loaded.');
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+
+    fetchRentals();
+    const unsubscribe = base44.entities.Listing.subscribe(() => {
+      fetchRentals();
+    });
+
     return () => {
       active = false;
+      unsubscribe?.();
     };
   }, []);
 

@@ -61,16 +61,22 @@ export default function DashboardListings() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, statusFilter, isAdmin, toast]);
+  }, [user?.id, statusFilter, isAdmin, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     load();
+    const unsubscribe = base44.entities.Listing.subscribe(() => {
+      load();
+    });
+    return () => {
+      unsubscribe?.();
+    };
   }, [load]);
 
   const setStatus = async (listing, patch, description) => {
     try {
       const payload = typeof patch === 'string' ? { status: patch } : { ...patch };
-      if (status === 'published' && !listing.published_date) {
+      if (payload.status === 'published' && !listing.published_date) {
         payload.published_date = new Date().toISOString().slice(0, 10);
       }
       await base44.entities.Listing.update(listing.id, payload);

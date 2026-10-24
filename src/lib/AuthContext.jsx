@@ -35,7 +35,22 @@ export const AuthProvider = ({ children }) => {
 
   const applySupabaseUser = useCallback((sbUser) => {
     const mapped = mapSupabaseUser(sbUser);
-    setUser(mapped);
+    setUser((prev) => {
+      if (!prev && !mapped) return prev;
+      if (
+        prev &&
+        mapped &&
+        prev.id === mapped.id &&
+        prev.email === mapped.email &&
+        prev.role === mapped.role &&
+        prev.full_name === mapped.full_name &&
+        prev.avatar_url === mapped.avatar_url &&
+        prev.phone === mapped.phone
+      ) {
+        return prev;
+      }
+      return mapped;
+    });
     setIsAuthenticated(Boolean(mapped));
   }, []);
 

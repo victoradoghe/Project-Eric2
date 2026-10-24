@@ -1,12 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, Trash2 } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import ListingCard from '@/components/listing/ListingCard';
 import { clearRecentlyViewed, getRecentlyViewed } from '@/lib/recentlyViewed';
 
 export default function RecentlyViewedList() {
   const [entries, setEntries] = useState(() => getRecentlyViewed());
+
+  useEffect(() => {
+    const refresh = () => setEntries(getRecentlyViewed());
+    const unsubscribe = base44.entities.Listing.subscribe(refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      unsubscribe?.();
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
 
   if (!entries.length) {
     return (

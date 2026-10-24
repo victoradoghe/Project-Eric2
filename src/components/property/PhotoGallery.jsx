@@ -12,11 +12,12 @@ import { propertyTypeLabel, statusLabel } from '@/lib/constants';
 
 export default function PhotoGallery({ listing }) {
   const images = (listing?.images || []).filter(Boolean);
+  const coverImage = images[0] || '';
   const [active, setActive] = useState(0);
 
   useEffect(() => {
     setActive(0);
-  }, [listing?.id]);
+  }, [listing?.id, coverImage]);
 
   if (!images.length) {
     return (
@@ -26,6 +27,8 @@ export default function PhotoGallery({ listing }) {
     );
   }
 
+  const safeActive = active < images.length ? active : 0;
+
   return (
     <div className="space-y-3">
       <Dialog>
@@ -33,28 +36,33 @@ export default function PhotoGallery({ listing }) {
           <button type="button" className="dm-focus block w-full overflow-hidden rounded-2xl">
             <div className="aspect-[16/10] w-full bg-secondary">
               <Image
-                src={images[active]}
-                alt={`${listing.title} — photo ${active + 1}`}
+                src={images[safeActive]}
+                alt={`${listing.title} — photo ${safeActive + 1}`}
                 fittingType="fill"
-                className="h-full w-full"
+                className="h-full w-full object-cover"
               />
             </div>
           </button>
         </DialogTrigger>
         <DialogContent className="max-w-5xl border-none bg-white p-2 sm:p-4">
           <DialogTitle className="sr-only">{listing.title} photos</DialogTitle>
-          <Image src={images[active]} alt={`${listing.title} — photo ${active + 1}`} fittingType="fit" className="max-h-[80vh] w-full" />
+          <Image
+            src={images[safeActive]}
+            alt={`${listing.title} — photo ${safeActive + 1}`}
+            fittingType="fit"
+            className="max-h-[80vh] w-full object-contain"
+          />
           <div className="flex gap-2 overflow-x-auto pb-1">
             {images.map((image, index) => (
               <button
-                key={image}
+                key={`${index}-${image?.slice(0, 48)}`}
                 type="button"
                 onClick={() => setActive(index)}
                 className={`dm-focus h-16 w-24 shrink-0 overflow-hidden rounded-lg border-2 ${
-                  index === active ? 'border-primary' : 'border-transparent'
+                  index === safeActive ? 'border-primary' : 'border-transparent'
                 }`}
               >
-                <Image src={image} alt="" fittingType="fill" className="h-full w-full" />
+                <Image src={image} alt="" fittingType="fill" className="h-full w-full object-cover" />
               </button>
             ))}
           </div>
@@ -65,15 +73,15 @@ export default function PhotoGallery({ listing }) {
         <div className="flex gap-2 overflow-x-auto pb-1">
           {images.map((image, index) => (
             <button
-              key={image}
+              key={`${index}-${image?.slice(0, 48)}`}
               type="button"
               onClick={() => setActive(index)}
               aria-label={`Show photo ${index + 1}`}
               className={`dm-focus h-20 w-28 shrink-0 overflow-hidden rounded-xl border-2 transition ${
-                index === active ? 'border-primary' : 'border-transparent hover:border-border'
+                index === safeActive ? 'border-primary' : 'border-transparent hover:border-border'
               }`}
             >
-              <Image src={image} alt="" fittingType="fill" className="h-full w-full" />
+              <Image src={image} alt="" fittingType="fill" className="h-full w-full object-cover" />
             </button>
           ))}
         </div>

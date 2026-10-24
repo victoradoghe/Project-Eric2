@@ -42,6 +42,7 @@ const INITIAL_PROPERTIES = INITIAL_LISTINGS.map((item) => ({
   year_built: item.year_built,
   parking: item.parking,
   amenities: item.amenities || [],
+  images: item.images || [],
   description: item.description,
   owner_id: 'owner-1',
   owner_name: item.owner_name || 'Elena Rostova',
@@ -49,6 +50,10 @@ const INITIAL_PROPERTIES = INITIAL_LISTINGS.map((item) => ({
   ownership_verified: true,
   is_demo: true,
 }));
+
+const INITIAL_IMAGES_BY_ID = new Map(
+  INITIAL_LISTINGS.map((item) => [item.id, item.images || []]),
+);
 
 const DEFAULT_USER = {
   id: 'demo-user-1',
@@ -59,23 +64,138 @@ const DEFAULT_USER = {
   avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
 };
 
+const isDeadBlobUrl = (url) => typeof url === 'string' && url.startsWith('blob:');
+
+function sanitizeListingRecord(record) {
+  if (!record || typeof record !== 'object') return record;
+  if (!Array.isArray(record.images)) return record;
+  const hasDeadBlob = record.images.some(isDeadBlobUrl);
+  if (!hasDeadBlob) return record;
+  const validImages = record.images.filter((url) => url && !isDeadBlobUrl(url));
+  const fallback = INITIAL_IMAGES_BY_ID.get(record.id) || [];
+  return {
+    ...record,
+    images: validImages.length ? validImages : fallback,
+  };
+}
+
+// Convert uploaded File/Blob to a persistent compressed Data URL so it survives
+// tab switches, tab closes, and browser restarts without exceeding localStorage quota.
+async function fileToPersistentDataUrl(file) {
+  const rawDataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Could not read image file'));
+    reader.readAsDataURL(file);
+  });
+
+  if (
+    typeof window === 'undefined' ||
+    typeof document === 'undefined' ||
+    !file.type?.startsWith('image/') ||
+    file.type === 'image/svg+xml' ||
+    file.type === 'image/gif'
+  ) {
+    return rawDataUrl;
+  }
+
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new window.Image();
+      el.onload = () => resolve(el);
+      el.onerror = (err) => reject(err);
+      el.src = rawDataUrl;
+    });
+
+    const maxDim = 1200;
+    let width = img.naturalWidth || img.width || maxDim;
+    let height = img.naturalHeight || img.height || 900;
+    if (width > maxDim || height > maxDim) {
+      const scale = Math.min(maxDim / width, maxDim / height);
+      width = Math.max(1, Math.round(width * scale));
+      height = Math.max(1, Math.round(height * scale));
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return rawDataUrl;
+
+    ctx.drawImage(img, 0, 0, width, height);
+    let compressed = canvas.toDataURL('image/jpeg', 0.8);
+
+    // Ensure large photos are compact enough that multiple uploads never hit localStorage quota
+    if (compressed.length > 220000) {
+      const smallerScale = Math.min(900 / width, 900 / height, 1);
+      canvas.width = Math.max(1, Math.round(width * smallerScale));
+      canvas.height = Math.max(1, Math.round(height * smallerScale));
+      const ctx2 = canvas.getContext('2d');
+      if (ctx2) {
+        ctx2.drawImage(img, 0, 0, canvas.width, canvas.height);
+        compressed = canvas.toDataURL('image/jpeg', 0.72);
+      }
+    }
+
+    return compressed.length < rawDataUrl.length || rawDataUrl.length > 180000
+      ? compressed
+      : rawDataUrl;
+  } catch {
+    return rawDataUrl;
+  }
+}
+
+const memoryFallback = new Map();
+const storeSubscribers = new Map();
+
+function notifySubscribers(storageKey) {
+  const subs = storeSubscribers.get(storageKey);
+  if (!subs) return;
+  subs.forEach((cb) => {
+    try {
+      cb();
+    } catch {
+      // ignore subscriber errors
+    }
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (!event.key || !event.key.startsWith('dm_')) return;
+    const key = event.key.slice(3);
+    memoryFallback.delete(key);
+    notifySubscribers(key);
+  });
+}
+
 // Local storage helper
 const storage = {
   get(key, fallback) {
     if (typeof window === 'undefined') return fallback;
     try {
       const val = window.localStorage.getItem(`dm_${key}`);
-      return val ? JSON.parse(val) : fallback;
-    } catch {
+      if (val) return JSON.parse(val);
+      if (memoryFallback.has(key)) return memoryFallback.get(key);
       return fallback;
+    } catch {
+      return memoryFallback.get(key) ?? fallback;
     }
   },
   set(key, val) {
+    memoryFallback.set(key, val);
     if (typeof window === 'undefined') return;
+    const serialized = JSON.stringify(val);
     try {
-      window.localStorage.setItem(`dm_${key}`, JSON.stringify(val));
+      window.localStorage.setItem(`dm_${key}`, serialized);
     } catch {
-      // storage quota or private browsing safe
+      try {
+        window.localStorage.removeItem('dm_audit_logs');
+        window.localStorage.removeItem('dwellmark_recently_viewed');
+        window.localStorage.setItem(`dm_${key}`, serialized);
+      } catch {
+        // memoryFallback still holds the latest state for this session
+      }
     }
   },
 };
@@ -150,12 +270,124 @@ function sortItems(items, sortExpr) {
   });
 }
 
+function syncListingImagesAcrossStores(listingRecord) {
+  if (!listingRecord?.id || !Array.isArray(listingRecord.images)) return;
+  const images = listingRecord.images;
+  const cover = images[0] || null;
+
+  // Sync linked Property record
+  const properties = storage.get('properties', INITIAL_PROPERTIES);
+  if (Array.isArray(properties)) {
+    let propChanged = false;
+    const nextProps = properties.map((prop) => {
+      if (
+        (listingRecord.property_id && prop.id === listingRecord.property_id) ||
+        prop.listing_id === listingRecord.id
+      ) {
+        if (JSON.stringify(prop.images || []) !== JSON.stringify(images)) {
+          propChanged = true;
+          return { ...prop, images };
+        }
+      }
+      return prop;
+    });
+    if (propChanged) {
+      storage.set('properties', nextProps);
+      notifySubscribers('properties');
+    }
+  }
+
+  // Sync Favorite snapshots
+  const favorites = storage.get('favorites', []);
+  if (Array.isArray(favorites) && favorites.length) {
+    let favChanged = false;
+    const nextFavs = favorites.map((fav) => {
+      if (fav.listing_id === listingRecord.id && fav.listing_image !== cover) {
+        favChanged = true;
+        return { ...fav, listing_image: cover };
+      }
+      return fav;
+    });
+    if (favChanged) {
+      storage.set('favorites', nextFavs);
+      notifySubscribers('favorites');
+    }
+  }
+
+  // Sync Recently Viewed cache
+  if (typeof window !== 'undefined') {
+    try {
+      const rawRv = window.localStorage.getItem('dwellmark_recently_viewed');
+      if (rawRv) {
+        const parsedRv = JSON.parse(rawRv);
+        if (Array.isArray(parsedRv)) {
+          let rvChanged = false;
+          const nextRv = parsedRv.map((entry) => {
+            if (entry?.id === listingRecord.id) {
+              const nextImages = cover ? [cover] : [];
+              if (JSON.stringify(entry.images || []) !== JSON.stringify(nextImages)) {
+                rvChanged = true;
+                return { ...entry, images: nextImages };
+              }
+            }
+            return entry;
+          });
+          if (rvChanged) {
+            window.localStorage.setItem('dwellmark_recently_viewed', JSON.stringify(nextRv));
+          }
+        }
+      }
+    } catch {
+      // ignore recently viewed sync errors
+    }
+  }
+}
+
+function syncPropertyImagesToListing(propertyRecord) {
+  if (!propertyRecord?.id || !Array.isArray(propertyRecord.images)) return;
+  const listings = storage.get('listings', INITIAL_LISTINGS);
+  if (!Array.isArray(listings)) return;
+  let changed = false;
+  let updatedListing = null;
+  const nextListings = listings.map((item) => {
+    if (item.property_id === propertyRecord.id || item.id === propertyRecord.listing_id) {
+      if (JSON.stringify(item.images || []) !== JSON.stringify(propertyRecord.images)) {
+        changed = true;
+        updatedListing = { ...item, images: propertyRecord.images };
+        return updatedListing;
+      }
+    }
+    return item;
+  });
+  if (changed) {
+    storage.set('listings', nextListings);
+    notifySubscribers('listings');
+    if (updatedListing) syncListingImagesAcrossStores(updatedListing);
+  }
+}
+
 function createEntityStore(storageKey, initialData) {
   const getStore = () => {
     const data = storage.get(storageKey, initialData);
+    if (!Array.isArray(data)) return initialData;
+    if (storageKey === 'listings' || storageKey === 'properties') {
+      let healed = false;
+      const cleaned = data.map((item) => {
+        const next = sanitizeListingRecord(item);
+        if (next !== item) healed = true;
+        return next;
+      });
+      if (healed) {
+        storage.set(storageKey, cleaned);
+      }
+      return cleaned;
+    }
     return data;
   };
-  const saveStore = (data) => storage.set(storageKey, data);
+  const saveStore = (data) => {
+    storage.set(storageKey, data);
+    notifySubscribers(storageKey);
+  };
 
   return {
     async filter(query = {}, options = {}) {
@@ -215,6 +447,8 @@ function createEntityStore(storageKey, initialData) {
       };
       all.unshift(created);
       saveStore(all);
+      if (storageKey === 'listings') syncListingImagesAcrossStores(created);
+      if (storageKey === 'properties') syncPropertyImagesToListing(created);
       return created;
     },
 
@@ -232,23 +466,34 @@ function createEntityStore(storageKey, initialData) {
 
     async update(id, updates) {
       const all = getStore();
-      const index = all.findIndex((item) => item.id === id);
+      const index = all.findIndex((item) => item.id === id || item.listing_id === id);
       if (index === -1) return updates;
-      all[index] = { ...all[index], ...updates };
+      const updated = {
+        ...all[index],
+        ...updates,
+        updated_date: new Date().toISOString(),
+      };
+      all[index] = updated;
       saveStore(all);
-      return all[index];
+      if (storageKey === 'listings') syncListingImagesAcrossStores(updated);
+      if (storageKey === 'properties') syncPropertyImagesToListing(updated);
+      return updated;
     },
 
     async updateMany(query, updates) {
       const all = getStore();
       let updatedCount = 0;
+      const updatedRecords = [];
       all.forEach((item, index) => {
         if (matchesQuery(item, query)) {
-          all[index] = { ...item, ...updates };
+          all[index] = { ...item, ...updates, updated_date: new Date().toISOString() };
+          updatedRecords.push(all[index]);
           updatedCount++;
         }
       });
       saveStore(all);
+      if (storageKey === 'listings') updatedRecords.forEach(syncListingImagesAcrossStores);
+      if (storageKey === 'properties') updatedRecords.forEach(syncPropertyImagesToListing);
       return { updated: updatedCount };
     },
 
@@ -289,8 +534,16 @@ function createEntityStore(storageKey, initialData) {
       return { rows };
     },
 
-    subscribe() {
-      return () => {};
+    subscribe(listener) {
+      if (typeof listener !== 'function') return () => {};
+      if (!storeSubscribers.has(storageKey)) {
+        storeSubscribers.set(storageKey, new Set());
+      }
+      const subs = storeSubscribers.get(storageKey);
+      subs.add(listener);
+      return () => {
+        subs.delete(listener);
+      };
     },
   };
 }
@@ -432,13 +685,21 @@ export function createMockBase44Client() {
       Core: {
         async UploadPublicFile({ file }) {
           if (file instanceof File || file instanceof Blob) {
-            return { file_url: URL.createObjectURL(file) };
+            const file_url = await fileToPersistentDataUrl(file);
+            return { file_url };
+          }
+          if (typeof file === 'string' && file) {
+            return { file_url: file };
           }
           return { file_url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80' };
         },
         async UploadPrivateFile({ file }) {
           if (file instanceof File || file instanceof Blob) {
-            return { file_url: URL.createObjectURL(file) };
+            const file_url = await fileToPersistentDataUrl(file);
+            return { file_url };
+          }
+          if (typeof file === 'string' && file) {
+            return { file_url: file };
           }
           return { file_url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80' };
         },
