@@ -102,22 +102,22 @@ export default function ListingEditor() {
         setForm({
           title: record.title || '',
           property_type: record.property_type || 'house',
-          address: property?.address ?? record.address ?? '',
+          address: record.address ?? property?.address ?? '',
           address_visibility: record.address_visibility || 'full',
-          neighborhood: property?.neighborhood ?? record.neighborhood ?? '',
-          city: property?.city ?? record.city ?? '',
-          state: property?.state ?? record.state ?? '',
-          postal_code: property?.postal_code ?? record.postal_code ?? '',
-          latitude: property?.latitude ?? record.latitude ?? '',
-          longitude: property?.longitude ?? record.longitude ?? '',
-          bedrooms: property?.bedrooms ?? record.bedrooms ?? '',
-          bathrooms: property?.bathrooms ?? record.bathrooms ?? '',
-          area_sqft: property?.area_sqft ?? record.area_sqft ?? '',
-          lot_sqft: property?.lot_sqft ?? record.lot_sqft ?? '',
-          year_built: property?.year_built ?? record.year_built ?? '',
-          parking: property?.parking ?? record.parking ?? '',
-          furnished: property?.furnished ?? record.furnished ?? '',
-          pets_allowed: property?.pets_allowed ?? record.pets_allowed ?? '',
+          neighborhood: record.neighborhood ?? property?.neighborhood ?? '',
+          city: record.city ?? property?.city ?? '',
+          state: record.state ?? property?.state ?? '',
+          postal_code: record.postal_code ?? property?.postal_code ?? '',
+          latitude: record.latitude ?? property?.latitude ?? '',
+          longitude: record.longitude ?? property?.longitude ?? '',
+          bedrooms: record.bedrooms ?? property?.bedrooms ?? '',
+          bathrooms: record.bathrooms ?? property?.bathrooms ?? '',
+          area_sqft: record.area_sqft ?? property?.area_sqft ?? '',
+          lot_sqft: record.lot_sqft ?? property?.lot_sqft ?? '',
+          year_built: record.year_built ?? property?.year_built ?? '',
+          parking: record.parking ?? property?.parking ?? '',
+          furnished: record.furnished ?? property?.furnished ?? '',
+          pets_allowed: record.pets_allowed ?? property?.pets_allowed ?? '',
           amenities: record.amenities || property?.amenities || [],
           description: record.description || property?.description || '',
           listing_type: record.listing_type || 'sale',
@@ -160,10 +160,10 @@ export default function ListingEditor() {
     const targetListingId = listing?.id || id;
     if (!targetListingId) return;
     try {
+      const updated = await base44.entities.Listing.update(targetListingId, { images: nextImages });
       if (propertyId) {
         await base44.entities.Property.update(propertyId, { images: nextImages }).catch(() => {});
       }
-      const updated = await base44.entities.Listing.update(targetListingId, { images: nextImages });
       setListing((current) => (current ? { ...current, ...(updated || {}), images: nextImages } : current));
     } catch {
       // explicit save button can still persist

@@ -76,22 +76,22 @@ export default function AdminListingEditDialog({ listing, open, onOpenChange, on
         if (!active) return;
         setForm({
           ...emptyForm(record),
-          address: property?.address ?? record.address ?? '',
-          neighborhood: property?.neighborhood ?? record.neighborhood ?? '',
-          latitude: property?.latitude ?? record.latitude ?? '',
-          longitude: property?.longitude ?? record.longitude ?? '',
-          bedrooms: property?.bedrooms ?? record.bedrooms ?? '',
-          bathrooms: property?.bathrooms ?? record.bathrooms ?? '',
-          area_sqft: property?.area_sqft ?? record.area_sqft ?? '',
-          lot_sqft: property?.lot_sqft ?? record.lot_sqft ?? '',
-          year_built: property?.year_built ?? record.year_built ?? '',
-          parking: property?.parking ?? record.parking ?? '',
-          furnished: property?.furnished ?? record.furnished ?? '',
-          pets_allowed: property?.pets_allowed ?? record.pets_allowed ?? '',
+          address: record.address ?? property?.address ?? '',
+          neighborhood: record.neighborhood ?? property?.neighborhood ?? '',
+          latitude: record.latitude ?? property?.latitude ?? '',
+          longitude: record.longitude ?? property?.longitude ?? '',
+          bedrooms: record.bedrooms ?? property?.bedrooms ?? '',
+          bathrooms: record.bathrooms ?? property?.bathrooms ?? '',
+          area_sqft: record.area_sqft ?? property?.area_sqft ?? '',
+          lot_sqft: record.lot_sqft ?? property?.lot_sqft ?? '',
+          year_built: record.year_built ?? property?.year_built ?? '',
+          parking: record.parking ?? property?.parking ?? '',
+          furnished: record.furnished ?? property?.furnished ?? '',
+          pets_allowed: record.pets_allowed ?? property?.pets_allowed ?? '',
           amenities: record.amenities || property?.amenities || [],
           description: record.description || property?.description || '',
         });
-        setImages(record.images || []);
+        setImages(record.images || property?.images || []);
       })
       .catch((error) => {
         toast({ title: 'Could not open this listing', description: error?.message, variant: 'destructive' });
@@ -108,10 +108,10 @@ export default function AdminListingEditDialog({ listing, open, onOpenChange, on
     setImages(nextImages);
     if (!listingId) return;
     try {
+      await base44.entities.Listing.update(listingId, { images: nextImages });
       if (listing?.property_id) {
         await base44.entities.Property.update(listing.property_id, { images: nextImages }).catch(() => {});
       }
-      await base44.entities.Listing.update(listingId, { images: nextImages });
     } catch {
       // full save button can still persist
     }

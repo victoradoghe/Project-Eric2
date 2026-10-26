@@ -38,6 +38,7 @@ export default function AdminPhotoEditor({ listing, onSaved }) {
 
   const persistImages = async (nextImages) => {
     if (!listing?.id) return null;
+    const updated = await base44.entities.Listing.update(listing.id, { images: nextImages });
     if (listing.property_id) {
       try {
         await base44.entities.Property.update(listing.property_id, { images: nextImages });
@@ -45,7 +46,6 @@ export default function AdminPhotoEditor({ listing, onSaved }) {
         // listing record is the primary display record
       }
     }
-    const updated = await base44.entities.Listing.update(listing.id, { images: nextImages });
     onSaved?.(updated);
     return updated;
   };

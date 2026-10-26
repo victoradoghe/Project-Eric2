@@ -168,6 +168,7 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingAuth(false);
       setIsLoadingPublicSettings(false);
       setAuthChecked(true);
+      base44.syncFromCloud?.();
     });
 
     return () => {

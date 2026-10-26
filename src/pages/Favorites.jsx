@@ -25,11 +25,18 @@ export default function Favorites() {
     }
     setLoading(true);
     try {
-      const [favoritePage, searchPage] = await Promise.all([
+      const [favoritePage, searchPage, listingPage] = await Promise.all([
         base44.entities.Favorite.filter({ user_id: user.id }, { sort: '-created_date', limit: 60 }),
         base44.entities.SavedSearch.filter({ user_id: user.id }, { sort: '-created_date', limit: 50 }),
+        base44.entities.Listing.list(),
       ]);
-      setFavorites((favoritePage?.items || []).map(snapshotToListing));
+      const liveById = new Map((listingPage?.items || []).map((item) => [item.id, item]));
+      const resolvedFavorites = (favoritePage?.items || []).map((fav) => {
+        const snap = snapshotToListing(fav);
+        const live = liveById.get(snap.id);
+        return live ? { ...snap, ...live } : snap;
+      });
+      setFavorites(resolvedFavorites);
       setSearches(searchPage?.items || []);
     } catch (error) {
       setFavorites([]);
@@ -45,8 +52,12 @@ export default function Favorites() {
 
   useEffect(() => {
     if (!user?.id) return undefined;
-    const unsubscribe = base44.entities.Favorite.subscribe(() => load());
-    return unsubscribe;
+    const unsubFav = base44.entities.Favorite.subscribe(() => load());
+    const unsubListing = base44.entities.Listing.subscribe(() => load());
+    return () => {
+      unsubFav?.();
+      unsubListing?.();
+    };
   }, [user?.id, load]);
 
   if (!user?.id) {

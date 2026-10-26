@@ -10,10 +10,28 @@ export default function RecentlyViewedList() {
   const [entries, setEntries] = useState(() => getRecentlyViewed());
 
   useEffect(() => {
-    const refresh = () => setEntries(getRecentlyViewed());
+    let active = true;
+    const refresh = async () => {
+      const recent = getRecentlyViewed();
+      try {
+        const page = await base44.entities.Listing.list();
+        if (!active) return;
+        const liveById = new Map((page?.items || []).map((item) => [item.id, item]));
+        setEntries(
+          recent.map((entry) => {
+            const live = liveById.get(entry.id);
+            return live ? { ...entry, ...live } : entry;
+          }),
+        );
+      } catch {
+        if (active) setEntries(recent);
+      }
+    };
+    refresh();
     const unsubscribe = base44.entities.Listing.subscribe(refresh);
     window.addEventListener('storage', refresh);
     return () => {
+      active = false;
       unsubscribe?.();
       window.removeEventListener('storage', refresh);
     };
