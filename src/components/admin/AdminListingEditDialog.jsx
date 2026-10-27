@@ -128,9 +128,9 @@ export default function AdminListingEditDialog({ listing, open, onOpenChange, on
     }
     setSaving(true);
     try {
-      await adminEditListing(user, listing, { form, images });
+      const updated = await adminEditListing(user, listing, { form, images });
       toast({ title: 'Listing updated' });
-      onSaved?.();
+      onSaved?.(updated);
       onOpenChange?.(false);
     } catch (error) {
       toast({ title: 'Could not save the listing', description: error?.message, variant: 'destructive' });

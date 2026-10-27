@@ -211,17 +211,13 @@ export const registerListingView = async (listingId, currentViews) => {
   }
 };
 
-let cityCache = null;
-
 export const cityOptions = async () => {
-  if (cityCache) return cityCache;
   try {
     const result = await base44.entities.Listing.list({ distinct: 'city' });
-    cityCache = (result?.items || []).filter(Boolean).sort();
+    return (result?.items || []).filter(Boolean).sort();
   } catch (error) {
-    cityCache = [];
+    return [];
   }
-  return cityCache;
 };
 
 export const notifyInquiryEvent = (kind, record_id) =>

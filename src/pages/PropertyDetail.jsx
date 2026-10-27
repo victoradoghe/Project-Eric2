@@ -6,6 +6,7 @@ import {
   BadgeCheck,
   Calculator,
   Info,
+  Pencil,
   Share2,
   ShieldQuestion,
   TrendingUp } from
@@ -24,6 +25,7 @@ import RentalApplicationDialog from '@/components/property/RentalApplicationDial
 import PayPalPaymentDialog from '@/components/property/PayPalPaymentDialog';
 import SimilarProperties from '@/components/property/SimilarProperties';
 import AdminPhotoEditor from '@/components/property/AdminPhotoEditor';
+import AdminListingEditDialog from '@/components/admin/AdminListingEditDialog';
 import InlinePriceEditor from '@/components/admin/InlinePriceEditor';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
@@ -49,6 +51,7 @@ export default function PropertyDetail() {
   const [error, setError] = useState(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [adminEditOpen, setAdminEditOpen] = useState(false);
   const viewedRef = useRef(false);
 
   useEffect(() => {
@@ -271,13 +274,35 @@ export default function PropertyDetail() {
       <div className="dm-container mt-6">
         <PhotoGallery listing={listing} />
         {isAdmin ?
-        <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAdminEditOpen(true)}
+            >
+              <Pencil className="mr-1.5 h-4 w-4" />
+              Edit listing details
+            </Button>
             <AdminPhotoEditor
             listing={listing}
             onSaved={(updated) => setListing((current) => ({ ...current, ...(updated || {}), images: updated?.images ?? current.images }))} />
-          
           </div> :
         null}
+        {isAdmin ? (
+          <AdminListingEditDialog
+            listing={listing}
+            open={adminEditOpen}
+            onOpenChange={setAdminEditOpen}
+            onSaved={(updated) => {
+              if (updated) {
+                setListing((current) => ({ ...current, ...updated }));
+              } else {
+                getListing(id).then((rec) => rec && setListing(rec)).catch(() => {});
+              }
+            }}
+          />
+        ) : null}
       </div>
 
       <div className="dm-container mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_380px]">

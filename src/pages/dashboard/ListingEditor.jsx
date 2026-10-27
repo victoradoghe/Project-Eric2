@@ -381,10 +381,12 @@ export default function ListingEditor() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => persist('draft')} disabled={saving || !form.title}>
-            <Save className="mr-2 h-4 w-4" />
-            Save draft
-          </Button>
+          {listing?.status !== 'published' ? (
+            <Button variant="outline" onClick={() => persist('draft')} disabled={saving || !form.title}>
+              <Save className="mr-2 h-4 w-4" />
+              Save draft
+            </Button>
+          ) : null}
           {listing?.id && ['published', 'under_offer'].includes(listing.status) ? (
             <Button variant="outline" asChild>
               <Link to={`/property/${listing.id}`} target="_blank" rel="noreferrer">
@@ -395,8 +397,17 @@ export default function ListingEditor() {
           ) : null}
           {isAdmin ? (
             <Button onClick={() => persist('published')} disabled={saving || !form.title}>
-              <Send className="mr-2 h-4 w-4" />
-              Publish now
+              {listing?.status === 'published' ? (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save changes
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Publish now
+                </>
+              )}
             </Button>
           ) : (
             <Button onClick={submitForReview} disabled={saving || !form.title}>

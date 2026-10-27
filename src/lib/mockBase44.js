@@ -199,7 +199,10 @@ function resolveImageRef(urlOrRef) {
 function dehydrateRecordImages(record) {
   if (!record || typeof record !== 'object') return record;
   let next = record;
-  if (Array.isArray(record.images)) {
+  if (Array.isArray(record._raw_image_refs) && record._raw_image_refs.length) {
+    next = { ...next, images: record._raw_image_refs };
+    delete next._raw_image_refs;
+  } else if (Array.isArray(record.images)) {
     let changed = false;
     const nextImages = record.images.map((img) => {
       if (isDataImageUrl(img)) {
@@ -221,24 +224,41 @@ function dehydrateRecordImages(record) {
 function hydrateRecordImages(record) {
   if (!record || typeof record !== 'object') return record;
   let next = record;
-  if (Array.isArray(record.images)) {
+  const sourceImages =
+    Array.isArray(record._raw_image_refs) && record._raw_image_refs.length
+      ? record._raw_image_refs
+      : record.images;
+  if (Array.isArray(sourceImages)) {
     let changed = false;
-    const nextImages = record.images
+    let hasUnresolvedRef = false;
+    const nextImages = sourceImages
       .map((img) => {
         if (isImageRef(img)) {
           const resolved = resolveImageRef(img);
-          if (resolved !== img) changed = true;
-          return resolved;
+          if (resolved !== img) {
+            changed = true;
+            return resolved;
+          }
+          hasUnresolvedRef = true;
+          return null;
         }
         return img;
       })
-      .filter((img) => img && !isImageRef(img));
-    if (changed || nextImages.length !== record.images.length) {
+      .filter(Boolean);
+    if (hasUnresolvedRef) {
+      const fallback = INITIAL_IMAGES_BY_ID.get(record.id) || [];
+      next = {
+        ...next,
+        images: nextImages.length ? nextImages : fallback,
+        _raw_image_refs: sourceImages,
+      };
+    } else if (changed || record._raw_image_refs || nextImages.length !== sourceImages.length) {
       const fallback = INITIAL_IMAGES_BY_ID.get(record.id) || [];
       next = {
         ...next,
         images: nextImages.length ? nextImages : fallback,
       };
+      delete next._raw_image_refs;
     }
   }
   if (isImageRef(record.listing_image)) {
@@ -518,6 +538,8 @@ function markListingDeleted(id) {
   }
 }
 
+let idbHydrationPromise = null;
+
 // Migrate any legacy inline base64 images in localStorage to deduplicated refs immediately
 function migrateLegacyLocalStorage() {
   if (typeof window === 'undefined') return;
@@ -545,8 +567,8 @@ function migrateLegacyLocalStorage() {
     // ignore migration errors
   }
 
-  // Also hydrate from IndexedDB in background in case localStorage was cleared or exceeded previously
-  (async () => {
+  // Hydrate from IndexedDB in case localStorage was cleared or exceeded previously
+  idbHydrationPromise = (async () => {
     try {
       const imgEntries = await idbGetAllEntries('images');
       let loadedNewImg = false;
@@ -585,74 +607,421 @@ migrateLegacyLocalStorage();
 // ============================================================================
 // Supabase Cloud Synchronization (Cross-User / Cross-Browser / Cross-Session)
 // ============================================================================
-const CLOUD_SHARD_ACCOUNTS = [
+// Catalog metadata is stored in a dedicated lightweight account (`CLOUD_CATALOG_EMAIL`)
+// without inline base64 images so its JWT never exceeds Cloudflare's 16KB HTTP header
+// limit on `PUT /auth/v1/user` or `GET /auth/v1/user`.
+// Each deduplicated custom image (`idb:img_<hash>`) is content-addressed and stored
+// in its own immutable account (`idb_img_<hash>@dwellmark.internal`), written via
+// `POST /auth/v1/signup` and read via `POST /auth/v1/token?grant_type=password`
+// (which carry payloads in the HTTP body rather than HTTP headers).
+const CLOUD_CATALOG_EMAIL = 'dm_catalog_store_v3@dwellmark.internal';
+const LEGACY_CLOUD_SHARDS = [
   'dm_cloud_store_v1@dwellmark.app',
   'dm_cloud_shard_1@dwellmark.app',
   'dm_cloud_shard_2@dwellmark.app',
 ];
 const CLOUD_SHARD_PASS = 'DwellmarkCloudSync!2026';
-const cloudClients = new Map();
+const SHARD_TOKEN_LS_PREFIX = 'dm_shard_token_v3_';
+const UPLOADED_IMG_REFS_KEY = 'dm_cloud_uploaded_imgs_v3';
+const shardTokenMemory = new Map();
+const uploadedImageRefsMemory = new Set();
 
-function getCloudClient(email) {
-  if (!isSupabaseConfigured || !supabaseUrl || !supabaseKey) return null;
-  if (cloudClients.has(email)) return cloudClients.get(email);
-  const memStore = new Map();
-  const client = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-      storageKey: `dm_cloud_isolated_${email}`,
-      storage: {
-        getItem: (k) => memStore.get(k) ?? null,
-        setItem: (k, v) => memStore.set(k, v),
-        removeItem: (k) => memStore.delete(k),
-      },
-    },
-  });
-  cloudClients.set(email, client);
-  return client;
+function imageRefToEmail(ref) {
+  return `${String(ref).replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase()}@dwellmark.internal`;
 }
 
-async function getAuthenticatedCloudShard(email) {
-  const client = getCloudClient(email);
-  if (!client) return null;
-  try {
-    const { data: sessionData } = await client.auth.getSession();
-    if (sessionData?.session?.user) {
-      const { data: userData, error: userErr } = await client.auth.getUser();
-      if (!userErr && userData?.user) return { client, user: userData.user };
+function getCachedShardToken(email) {
+  const mem = shardTokenMemory.get(email);
+  if (mem && mem.expires_at > Date.now() + 60000 && mem.access_token.length < 12000) {
+    return mem.access_token;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(`${SHARD_TOKEN_LS_PREFIX}${email}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (
+          parsed?.access_token &&
+          parsed.access_token.length < 12000 &&
+          parsed?.expires_at > Date.now() + 60000
+        ) {
+          shardTokenMemory.set(email, parsed);
+          return parsed.access_token;
+        }
+      }
+    } catch {
+      // ignore
     }
-    const { data, error } = await client.auth.signInWithPassword({
-      email,
-      password: CLOUD_SHARD_PASS,
+  }
+  return null;
+}
+
+function setCachedShardToken(email, access_token, expires_in = 3600) {
+  if (!access_token || access_token.length >= 12000) return;
+  const entry = {
+    access_token,
+    expires_at: Date.now() + Number(expires_in || 3600) * 1000,
+  };
+  shardTokenMemory.set(email, entry);
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(`${SHARD_TOKEN_LS_PREFIX}${email}`, JSON.stringify(entry));
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function clearCachedShardToken(email) {
+  shardTokenMemory.delete(email);
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(`${SHARD_TOKEN_LS_PREFIX}${email}`);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+async function loginCloudAccount(email, createIfMissing = false) {
+  if (!isSupabaseConfigured || !supabaseUrl || !supabaseKey) return null;
+  try {
+    let res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password: CLOUD_SHARD_PASS }),
     });
-    if (error || !data?.user) return null;
-    return { client, user: data.user };
+    if (!res.ok && createIfMissing) {
+      const signupRes = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password: CLOUD_SHARD_PASS }),
+      });
+      if (signupRes.ok) {
+        const signupData = await signupRes.json();
+        if (signupData?.access_token && signupData?.user) {
+          setCachedShardToken(email, signupData.access_token, signupData.expires_in);
+          return { token: signupData.access_token, user: signupData.user };
+        }
+      }
+      res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password: CLOUD_SHARD_PASS }),
+      });
+    }
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.access_token || !data?.user) return null;
+    setCachedShardToken(email, data.access_token, data.expires_in);
+    return { token: data.access_token, user: data.user };
   } catch {
     return null;
   }
 }
 
-function hasListingChangedFromInitial(item) {
+async function fetchCloudCatalogUser() {
+  if (!isSupabaseConfigured || !supabaseUrl || !supabaseKey) return null;
+  const cachedToken = getCachedShardToken(CLOUD_CATALOG_EMAIL);
+  if (cachedToken) {
+    try {
+      const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        method: 'GET',
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${cachedToken}`,
+        },
+      });
+      if (res.ok) {
+        const user = await res.json();
+        if (user?.id) return { token: cachedToken, user };
+      }
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        clearCachedShardToken(CLOUD_CATALOG_EMAIL);
+      }
+    } catch {
+      // fallback to login
+    }
+  }
+  return loginCloudAccount(CLOUD_CATALOG_EMAIL, true);
+}
+
+async function updateCloudCatalogMetadata(token, metadataObj) {
+  if (!isSupabaseConfigured || !supabaseUrl || !supabaseKey) return false;
+  const attemptUpdate = async (bearer) =>
+    fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'PUT',
+      headers: {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${bearer}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ data: metadataObj }),
+    });
+
+  try {
+    let activeToken = token || getCachedShardToken(CLOUD_CATALOG_EMAIL);
+    if (!activeToken) {
+      const loggedIn = await loginCloudAccount(CLOUD_CATALOG_EMAIL, true);
+      activeToken = loggedIn?.token;
+    }
+    if (!activeToken) return false;
+    let res = await attemptUpdate(activeToken);
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      clearCachedShardToken(CLOUD_CATALOG_EMAIL);
+      const relogged = await loginCloudAccount(CLOUD_CATALOG_EMAIL, true);
+      if (!relogged?.token) return false;
+      res = await attemptUpdate(relogged.token);
+    }
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function uploadImageRefToCloud(ref, dataUrl) {
+  if (!isImageRef(ref) || !isDataImageUrl(dataUrl) || !isSupabaseConfigured) return false;
+  if (uploadedImageRefsMemory.has(ref)) return true;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(UPLOADED_IMG_REFS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(arr) && arr.includes(ref)) {
+        uploadedImageRefsMemory.add(ref);
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    const email = imageRefToEmail(ref);
+    const res = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        password: CLOUD_SHARD_PASS,
+        data: { ref, dataUrl },
+      }),
+    });
+    if (res.ok || res.status === 400 || res.status === 422) {
+      uploadedImageRefsMemory.add(ref);
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = window.localStorage.getItem(UPLOADED_IMG_REFS_KEY);
+          const arr = raw ? JSON.parse(raw) : [];
+          const set = new Set(Array.isArray(arr) ? arr : []);
+          set.add(ref);
+          window.localStorage.setItem(UPLOADED_IMG_REFS_KEY, JSON.stringify(Array.from(set)));
+        } catch {
+          // ignore
+        }
+      }
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function cacheDownloadedImage(ref, dataUrl) {
+  if (!isImageRef(ref) || !isDataImageUrl(dataUrl)) return;
+  imageMemoryCache.set(ref, dataUrl);
+  uploadedImageRefsMemory.add(ref);
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(`${IMAGE_LS_PREFIX}${ref}`, dataUrl);
+    } catch {
+      pruneUnusedLocalStorageImages(ref);
+      try {
+        window.localStorage.setItem(`${IMAGE_LS_PREFIX}${ref}`, dataUrl);
+      } catch {
+        // ignore
+      }
+    }
+    idbPut('images', ref, dataUrl);
+  }
+}
+
+async function downloadImageRefFromCloud(ref) {
+  if (!isImageRef(ref) || !isSupabaseConfigured) return null;
+  const existing = resolveImageRef(ref);
+  if (isDataImageUrl(existing)) return existing;
+  try {
+    const email = imageRefToEmail(ref);
+    const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password: CLOUD_SHARD_PASS }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const dataUrl = data?.user?.user_metadata?.dataUrl;
+      if (isDataImageUrl(dataUrl)) {
+        cacheDownloadedImage(ref, dataUrl);
+        return dataUrl;
+      }
+    }
+    // Fallback: check legacy shards if image was uploaded before v3 migration
+    for (const legacyEmail of LEGACY_CLOUD_SHARDS) {
+      const leg = await loginCloudAccount(legacyEmail, false);
+      const legImgs = leg?.user?.user_metadata?.dm_images || {};
+      Object.entries(legImgs).forEach(([k, v]) => {
+        if (isDataImageUrl(v)) {
+          cacheDownloadedImage(k, v);
+          uploadImageRefToCloud(k, v);
+        }
+      });
+      if (imageMemoryCache.has(ref)) {
+        return imageMemoryCache.get(ref);
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+const CONTENT_COMPARE_FIELDS = [
+  'title',
+  'description',
+  'listing_type',
+  'price',
+  'currency',
+  'rent_frequency',
+  'deposit',
+  'lease_months',
+  'available_from',
+  'open_house_at',
+  'accepts_applications',
+  'status',
+  'under_offer',
+  'featured',
+  'verification_status',
+  'moderation_note',
+  'property_type',
+  'bedrooms',
+  'bathrooms',
+  'area_sqft',
+  'lot_sqft',
+  'year_built',
+  'parking',
+  'furnished',
+  'pets_allowed',
+  'address',
+  'address_visibility',
+  'neighborhood',
+  'city',
+  'state',
+  'postal_code',
+  'latitude',
+  'longitude',
+  'owner_name',
+  'owner_role',
+];
+
+function normalizeImageForCompare(img) {
+  if (isDataImageUrl(img)) return hashImageString(img);
+  return img;
+}
+
+function hasContentChangedFromInitial(item) {
   if (!item?.id) return false;
   if (!item.is_demo) return true;
-  if (item.updated_date) return true;
+  if (typeof item._content_updated_ts === 'number' && item._content_updated_ts > 0) return true;
   const init = INITIAL_LISTINGS_BY_ID.get(item.id);
   if (!init) return true;
-  return (
-    JSON.stringify(item.images || []) !== JSON.stringify(init.images || []) ||
-    item.price !== init.price ||
-    item.title !== init.title ||
-    item.status !== init.status ||
-    item.featured !== init.featured ||
-    item.description !== init.description ||
-    item.address !== init.address ||
-    item.bedrooms !== init.bedrooms ||
-    item.bathrooms !== init.bathrooms ||
-    item.area_sqft !== init.area_sqft ||
-    item.verification_status !== init.verification_status
-  );
+  const rawImgs =
+    Array.isArray(item._raw_image_refs) && item._raw_image_refs.length
+      ? item._raw_image_refs
+      : item.images || [];
+  const itemImgs = rawImgs.map(normalizeImageForCompare);
+  const initImgs = (init.images || []).map(normalizeImageForCompare);
+  if (JSON.stringify(itemImgs) !== JSON.stringify(initImgs)) return true;
+  if (JSON.stringify(item.amenities || []) !== JSON.stringify(init.amenities || [])) return true;
+  for (const field of CONTENT_COMPARE_FIELDS) {
+    if ((item[field] ?? null) !== (init[field] ?? null)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function compactListingForCloud(item) {
+  const dehydrated = dehydrateRecordImages(item);
+  if (!dehydrated?.is_demo) {
+    const copy = { ...dehydrated };
+    delete copy.search_text;
+    delete copy._raw_image_refs;
+    return copy;
+  }
+  const init = INITIAL_LISTINGS_BY_ID.get(dehydrated.id);
+  if (!init) return dehydrated;
+  const delta = {
+    id: dehydrated.id,
+    is_demo: true,
+    updated_date: dehydrated.updated_date || new Date().toISOString(),
+    _content_updated_ts:
+      typeof dehydrated._content_updated_ts === 'number' && dehydrated._content_updated_ts > 0
+        ? dehydrated._content_updated_ts
+        : Date.parse(dehydrated.updated_date) || Date.now(),
+  };
+  if (JSON.stringify(dehydrated.images || []) !== JSON.stringify(init.images || [])) {
+    delta.images = dehydrated.images;
+  }
+  if (JSON.stringify(dehydrated.amenities || []) !== JSON.stringify(init.amenities || [])) {
+    delta.amenities = dehydrated.amenities;
+  }
+  for (const field of CONTENT_COMPARE_FIELDS) {
+    if ((dehydrated[field] ?? null) !== (init[field] ?? null)) {
+      delta[field] = dehydrated[field];
+    }
+  }
+  return delta;
+}
+
+let maxKnownCloudTs = 0;
+
+function nextContentTimestamp() {
+  const next = Math.max(Date.now(), maxKnownCloudTs + 1);
+  maxKnownCloudTs = next;
+  return next;
+}
+
+function getLocalContentTimestamp(item) {
+  if (!item) return 0;
+  return typeof item._content_updated_ts === 'number' && item._content_updated_ts > 0
+    ? item._content_updated_ts
+    : 0;
+}
+
+function getCloudContentTimestamp(item) {
+  if (!item) return 0;
+  if (typeof item._content_updated_ts === 'number' && item._content_updated_ts > 0) {
+    return item._content_updated_ts;
+  }
+  if (hasContentChangedFromInitial(item)) {
+    const parsed = item.updated_date ? Date.parse(item.updated_date) : 0;
+    return parsed > 0 ? parsed : 1;
+  }
+  return 0;
 }
 
 function mergeListingsLists(localList = [], incomingList = [], deletedIds = new Set()) {
@@ -673,7 +1042,7 @@ function mergeListingsLists(localList = [], incomingList = [], deletedIds = new 
     const inc = incomingById.get(id);
     if (loc && !inc) {
       merged.push(loc);
-      if (hasListingChangedFromInitial(loc)) {
+      if (hasContentChangedFromInitial(loc) && getLocalContentTimestamp(loc) > 0) {
         localHasNewer = true;
       }
       return;
@@ -683,31 +1052,49 @@ function mergeListingsLists(localList = [], incomingList = [], deletedIds = new 
       changed = true;
       return;
     }
-    const locTime = loc.updated_date ? Date.parse(loc.updated_date) || 0 : 0;
-    const incTime = inc.updated_date ? Date.parse(inc.updated_date) || 0 : 0;
-    if (incTime > locTime) {
-      merged.push(sanitizeListingRecord({ ...loc, ...inc }));
-      if (JSON.stringify(loc) !== JSON.stringify({ ...loc, ...inc })) {
+    const locTime = getLocalContentTimestamp(loc);
+    const incTime = getCloudContentTimestamp(inc);
+    if (incTime > maxKnownCloudTs) {
+      maxKnownCloudTs = incTime;
+    }
+    const mergedViews = Math.max(Number(loc.views || 0), Number(inc.views || 0));
+
+    if (incTime > 0 && incTime >= locTime) {
+      const nextRec = sanitizeListingRecord({
+        ...loc,
+        ...inc,
+        views: mergedViews,
+      });
+      merged.push(nextRec);
+      if (JSON.stringify(loc) !== JSON.stringify(nextRec)) {
         changed = true;
       }
     } else if (locTime > incTime) {
       merged.push(loc);
       localHasNewer = true;
     } else {
-      // Equal timestamps: prefer record with modified/custom images if different
-      if (
-        JSON.stringify(loc.images || []) !== JSON.stringify(inc.images || []) &&
-        JSON.stringify(inc.images || []) !== JSON.stringify(INITIAL_IMAGES_BY_ID.get(id) || [])
-      ) {
-        merged.push(sanitizeListingRecord({ ...loc, ...inc }));
-        changed = true;
-      } else {
-        merged.push(loc);
-      }
+      merged.push(loc);
     }
   });
 
   return { items: merged, changed, localHasNewer };
+}
+
+let realtimeChannel = null;
+if (typeof window !== 'undefined' && isSupabaseConfigured && supabaseUrl && supabaseKey) {
+  try {
+    const rtClient = createClient(supabaseUrl, supabaseKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    realtimeChannel = rtClient
+      .channel('dwellmark_catalog_sync')
+      .on('broadcast', { event: 'catalog_updated' }, () => {
+        syncListingsFromCloud(true);
+      })
+      .subscribe();
+  } catch {
+    realtimeChannel = null;
+  }
 }
 
 let pushInFlight = null;
@@ -725,10 +1112,10 @@ export async function pushListingsToCloud() {
       const currentListings = storage.get('listings', INITIAL_LISTINGS);
       const deletedIds = Array.from(getDeletedListingIds());
       const dirtyListings = currentListings
-        .filter(hasListingChangedFromInitial)
-        .map(dehydrateRecordImages);
+        .filter(hasContentChangedFromInitial)
+        .map(compactListingForCloud);
 
-      // Collect all referenced idb:img_* hashes
+      // Collect all referenced idb:img_* hashes and upload each to its dedicated cloud account
       const neededRefs = new Set();
       dirtyListings.forEach((item) => {
         (item.images || []).forEach((img) => {
@@ -736,91 +1123,42 @@ export async function pushListingsToCloud() {
         });
       });
 
-      const primaryShard = await getAuthenticatedCloudShard(CLOUD_SHARD_ACCOUNTS[0]);
-      if (!primaryShard) return false;
-
-      // Upload any new deduplicated images across the 3 shard accounts
       if (neededRefs.size > 0) {
-        const shards = await Promise.all(
-          CLOUD_SHARD_ACCOUNTS.map((email) => getAuthenticatedCloudShard(email)),
-        );
-        const activeShards = shards.filter(Boolean);
-        const existingImagesByRef = new Map();
-
-        activeShards.forEach((s) => {
-          const imgs = s.user?.user_metadata?.dm_images || {};
-          Object.entries(imgs).forEach(([ref, dataUrl]) => {
-            if (isDataImageUrl(dataUrl)) {
-              existingImagesByRef.set(ref, dataUrl);
-              if (!imageMemoryCache.has(ref)) imageMemoryCache.set(ref, dataUrl);
-            }
-          });
-        });
-
-        const shardPayloads = activeShards.map((s) => ({
-          ...(s.user?.user_metadata?.dm_images || {}),
-        }));
-        const shardDirty = activeShards.map(() => false);
-
-        let shardCursor = 0;
-        neededRefs.forEach((ref) => {
-          if (existingImagesByRef.has(ref)) return;
-          const dataUrl = resolveImageRef(ref);
-          if (!isDataImageUrl(dataUrl) || !activeShards.length) return;
-          // Pick shard with smallest current serialized size
-          let targetIdx = shardCursor % activeShards.length;
-          let minSize = Infinity;
-          for (let i = 0; i < activeShards.length; i++) {
-            const sz = JSON.stringify(shardPayloads[i]).length;
-            if (sz < minSize) {
-              minSize = sz;
-              targetIdx = i;
-            }
-          }
-          // If shard exceeds ~650KB, prune unreferenced images from it first
-          if (minSize + dataUrl.length > 650000) {
-            Object.keys(shardPayloads[targetIdx]).forEach((oldRef) => {
-              if (!neededRefs.has(oldRef)) {
-                delete shardPayloads[targetIdx][oldRef];
-              }
-            });
-          }
-          shardPayloads[targetIdx][ref] = dataUrl;
-          shardDirty[targetIdx] = true;
-          shardCursor++;
-        });
-
         await Promise.all(
-          activeShards.map(async (s, idx) => {
-            if (!shardDirty[idx]) return;
-            if (idx === 0) return; // Shard 0 updates together with catalog below
-            await s.client.auth.updateUser({
-              data: { dm_images: shardPayloads[idx] },
-            });
+          Array.from(neededRefs).map(async (ref) => {
+            const dataUrl = resolveImageRef(ref);
+            if (isDataImageUrl(dataUrl)) {
+              await uploadImageRefToCloud(ref, dataUrl);
+            }
           }),
         );
+      }
 
-        const shard0Images = shardPayloads[0] || primaryShard.user?.user_metadata?.dm_images || {};
-        await primaryShard.client.auth.updateUser({
-          data: {
-            dm_images: shard0Images,
-            dm_catalog_v2: {
-              updated_at: new Date().toISOString(),
-              deleted_ids: deletedIds,
-              records: dirtyListings,
-            },
-          },
-        });
-      } else {
-        await primaryShard.client.auth.updateUser({
-          data: {
-            dm_catalog_v2: {
-              updated_at: new Date().toISOString(),
-              deleted_ids: deletedIds,
-              records: dirtyListings,
-            },
-          },
-        });
+      const catalogShard = await fetchCloudCatalogUser();
+      if (!catalogShard) return false;
+
+      const nowIso = new Date().toISOString();
+      const ok = await updateCloudCatalogMetadata(catalogShard.token, {
+        dm_catalog_v3: {
+          updated_at: nowIso,
+          deleted_ids: deletedIds,
+          records: dirtyListings,
+        },
+      });
+      if (!ok) return false;
+
+      lastSyncedCatalogUpdatedAt = nowIso;
+
+      if (realtimeChannel) {
+        try {
+          realtimeChannel.send({
+            type: 'broadcast',
+            event: 'catalog_updated',
+            payload: { updated_at: nowIso },
+          });
+        } catch {
+          // ignore
+        }
       }
 
       return true;
@@ -839,36 +1177,50 @@ export async function pushListingsToCloud() {
 }
 
 let syncInFlight = null;
+let initialCloudSyncPromise = null;
+let lastSyncedCatalogUpdatedAt = null;
 
-export async function syncListingsFromCloud() {
+export async function syncListingsFromCloud(force = false) {
   if (!isSupabaseConfigured) return false;
   if (syncInFlight) return syncInFlight;
 
   syncInFlight = (async () => {
     try {
-      const primaryShard = await getAuthenticatedCloudShard(CLOUD_SHARD_ACCOUNTS[0]);
-      if (!primaryShard) return false;
+      const catalogShard = await fetchCloudCatalogUser();
+      if (!catalogShard) return false;
 
-      const meta = primaryShard.user?.user_metadata || {};
-      const catalog = meta.dm_catalog_v2;
-      const shard0Images = meta.dm_images || {};
+      const meta = catalogShard.user?.user_metadata || {};
+      let catalog = meta.dm_catalog_v3 || meta.dm_catalog_v2;
 
-      Object.entries(shard0Images).forEach(([ref, dataUrl]) => {
-        if (isDataImageUrl(dataUrl)) {
-          imageMemoryCache.set(ref, dataUrl);
-          try {
-            window.localStorage.setItem(`${IMAGE_LS_PREFIX}${ref}`, dataUrl);
-          } catch {
-            // ignore
+      // One-time automatic migration if v3 catalog is empty on first boot
+      if (!catalog || (!Array.isArray(catalog.records) && !Array.isArray(catalog.deleted_ids))) {
+        const legacyPrimary = await loginCloudAccount(LEGACY_CLOUD_SHARDS[0], false);
+        const legacyMeta = legacyPrimary?.user?.user_metadata || {};
+        const legacyImages = legacyMeta.dm_images || {};
+        Object.entries(legacyImages).forEach(([ref, dataUrl]) => {
+          if (isDataImageUrl(dataUrl)) {
+            cacheDownloadedImage(ref, dataUrl);
+            uploadImageRefToCloud(ref, dataUrl);
           }
-          idbPut('images', ref, dataUrl);
+        });
+        if (legacyMeta.dm_catalog_v2) {
+          catalog = legacyMeta.dm_catalog_v2;
         }
-      });
+      }
 
       const cloudRecords = Array.isArray(catalog?.records) ? catalog.records : [];
       const cloudDeletedIds = Array.isArray(catalog?.deleted_ids) ? catalog.deleted_ids : [];
 
-      // Check if any cloud record references an image in shard 1 or shard 2
+      if (
+        !force &&
+        lastSyncedCatalogUpdatedAt &&
+        catalog?.updated_at &&
+        catalog.updated_at === lastSyncedCatalogUpdatedAt
+      ) {
+        return false;
+      }
+
+      // Download any referenced custom images that aren't cached locally yet
       const missingRefs = new Set();
       cloudRecords.forEach((rec) => {
         (rec?.images || []).forEach((img) => {
@@ -879,23 +1231,9 @@ export async function syncListingsFromCloud() {
       });
 
       if (missingRefs.size > 0) {
-        const extraShards = await Promise.all(
-          CLOUD_SHARD_ACCOUNTS.slice(1).map((email) => getAuthenticatedCloudShard(email)),
+        await Promise.all(
+          Array.from(missingRefs).map((ref) => downloadImageRefFromCloud(ref)),
         );
-        extraShards.filter(Boolean).forEach((s) => {
-          const imgs = s.user?.user_metadata?.dm_images || {};
-          Object.entries(imgs).forEach(([ref, dataUrl]) => {
-            if (isDataImageUrl(dataUrl)) {
-              imageMemoryCache.set(ref, dataUrl);
-              try {
-                window.localStorage.setItem(`${IMAGE_LS_PREFIX}${ref}`, dataUrl);
-              } catch {
-                // ignore
-              }
-              idbPut('images', ref, dataUrl);
-            }
-          });
-        });
       }
 
       const deletedSet = getDeletedListingIds();
@@ -904,10 +1242,20 @@ export async function syncListingsFromCloud() {
         markListingDeleted(id);
       });
 
+      // Clear memoryFallback so storage.get re-hydrates with any newly downloaded cloud images
+      memoryFallback.delete('listings');
       const localListings = storage.get('listings', INITIAL_LISTINGS);
       const hydratedCloudRecords = cloudRecords.map((rec) => {
         const base = INITIAL_LISTINGS_BY_ID.get(rec.id) || {};
-        return sanitizeListingRecord({ ...base, ...rec });
+        const combined = { ...base, ...rec };
+        if (combined.latitude !== undefined && combined.latitude !== null && combined.latitude !== '') {
+          combined.lat = Number(combined.latitude);
+        }
+        if (combined.longitude !== undefined && combined.longitude !== null && combined.longitude !== '') {
+          combined.lng = Number(combined.longitude);
+        }
+        Object.assign(combined, listingSearchFields(combined));
+        return sanitizeListingRecord(combined);
       });
 
       const { items: mergedListings, changed, localHasNewer } = mergeListingsLists(
@@ -916,10 +1264,17 @@ export async function syncListingsFromCloud() {
         deletedSet,
       );
 
-      if (changed) {
+      const isFirstSync = !lastSyncedCatalogUpdatedAt;
+      if (catalog?.updated_at) {
+        lastSyncedCatalogUpdatedAt = catalog.updated_at;
+      }
+
+      if (changed || isFirstSync) {
         storage.set('listings', mergedListings);
         mergedListings.forEach(syncListingImagesAcrossStores);
         notifySubscribers('listings');
+        notifySubscribers('properties');
+        notifySubscribers('favorites');
         broadcastStoreUpdate(['listings', 'properties', 'favorites']);
       }
 
@@ -938,9 +1293,20 @@ export async function syncListingsFromCloud() {
   return syncInFlight;
 }
 
+async function ensureCloudSynced() {
+  if (!isSupabaseConfigured) return;
+  if (idbHydrationPromise) {
+    await Promise.race([idbHydrationPromise, new Promise((r) => setTimeout(r, 800))]);
+  }
+  if (!initialCloudSyncPromise) {
+    initialCloudSyncPromise = syncListingsFromCloud();
+  }
+  await Promise.race([initialCloudSyncPromise, new Promise((r) => setTimeout(r, 4500))]);
+}
+
 if (typeof window !== 'undefined' && isSupabaseConfigured) {
   // Initial cloud sync on load
-  syncListingsFromCloud();
+  initialCloudSyncPromise = syncListingsFromCloud();
 
   // Re-sync when tab becomes visible or window gains focus
   window.addEventListener('focus', () => {
@@ -951,6 +1317,12 @@ if (typeof window !== 'undefined' && isSupabaseConfigured) {
       syncListingsFromCloud();
     }
   });
+  // Periodic background check so open browsers receive admin updates automatically
+  window.setInterval(() => {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+      syncListingsFromCloud();
+    }
+  }, 8000);
 }
 
 function matchesQuery(item, query = {}) {
@@ -1160,22 +1532,43 @@ function syncListingImagesAcrossStores(listingRecord) {
   }
 }
 
-function syncPropertyImagesToListing(propertyRecord) {
-  if (!propertyRecord?.id || !Array.isArray(propertyRecord.images)) return;
+function syncPropertyToListing(propertyRecord) {
+  if (!propertyRecord?.id) return;
   const listings = storage.get('listings', INITIAL_LISTINGS);
   if (!Array.isArray(listings)) return;
   let changed = false;
   let updatedListing = null;
+  const now = new Date().toISOString();
+  const nowTs = nextContentTimestamp();
   const nextListings = listings.map((item) => {
     if (item.property_id === propertyRecord.id || item.id === propertyRecord.listing_id) {
-      if (JSON.stringify(item.images || []) !== JSON.stringify(propertyRecord.images)) {
+      const candidate = { ...item };
+      let itemChanged = false;
+      SHARED_PROPERTY_FIELDS.forEach((field) => {
+        if (
+          propertyRecord[field] !== undefined &&
+          JSON.stringify(candidate[field]) !== JSON.stringify(propertyRecord[field])
+        ) {
+          candidate[field] = propertyRecord[field];
+          itemChanged = true;
+        }
+      });
+      if (itemChanged) {
         changed = true;
-        updatedListing = {
-          ...item,
-          images: propertyRecord.images,
-          updated_date: new Date().toISOString(),
-        };
-        return updatedListing;
+        if (Array.isArray(propertyRecord.images)) {
+          delete candidate._raw_image_refs;
+        }
+        if (candidate.latitude !== undefined && candidate.latitude !== null && candidate.latitude !== '') {
+          candidate.lat = Number(candidate.latitude);
+        }
+        if (candidate.longitude !== undefined && candidate.longitude !== null && candidate.longitude !== '') {
+          candidate.lng = Number(candidate.longitude);
+        }
+        Object.assign(candidate, listingSearchFields(candidate));
+        candidate.updated_date = now;
+        candidate._content_updated_ts = nowTs;
+        updatedListing = candidate;
+        return candidate;
       }
     }
     return item;
@@ -1183,7 +1576,10 @@ function syncPropertyImagesToListing(propertyRecord) {
   if (changed) {
     storage.set('listings', nextListings);
     notifySubscribers('listings');
-    if (updatedListing) syncListingImagesAcrossStores(updatedListing);
+    if (updatedListing) {
+      syncListingImagesAcrossStores(updatedListing);
+      pushListingsToCloud();
+    }
   }
 }
 
@@ -1193,22 +1589,22 @@ function createEntityStore(storageKey, initialData) {
     if (!Array.isArray(data)) return initialData;
     if (storageKey === 'listings' || storageKey === 'properties') {
       const deletedSet = storageKey === 'listings' ? getDeletedListingIds() : null;
-      let healed = false;
+      let needsPersist = false;
       const filtered = deletedSet
         ? data.filter((item) => {
             if (deletedSet.has(item?.id)) {
-              healed = true;
+              needsPersist = true;
               return false;
             }
             return true;
           })
         : data;
       const cleaned = filtered.map((item) => {
-        const next = sanitizeListingRecord(item);
-        if (next !== item) healed = true;
-        return next;
+        const hadDeadBlob = Array.isArray(item?.images) && item.images.some(isDeadBlobUrl);
+        if (hadDeadBlob) needsPersist = true;
+        return sanitizeListingRecord(item);
       });
-      if (healed) {
+      if (needsPersist) {
         storage.set(storageKey, cleaned);
       }
       return cleaned;
@@ -1223,6 +1619,9 @@ function createEntityStore(storageKey, initialData) {
 
   return {
     async filter(query = {}, options = {}) {
+      if (storageKey === 'listings' || storageKey === 'properties') {
+        await ensureCloudSynced();
+      }
       const all = getStore();
       let matched = all.filter((item) => matchesQuery(item, query));
       if (options.sort) {
@@ -1242,6 +1641,9 @@ function createEntityStore(storageKey, initialData) {
     },
 
     async list(options = {}) {
+      if (storageKey === 'listings' || storageKey === 'properties') {
+        await ensureCloudSynced();
+      }
       const all = getStore();
       if (options.distinct) {
         const field = options.distinct;
@@ -1255,6 +1657,9 @@ function createEntityStore(storageKey, initialData) {
     },
 
     async get(id) {
+      if (storageKey === 'listings' || storageKey === 'properties') {
+        await ensureCloudSynced();
+      }
       const all = getStore();
       const found = all.find((item) => item.id === id || item.listing_id === id);
       if (!found) {
@@ -1265,6 +1670,9 @@ function createEntityStore(storageKey, initialData) {
     },
 
     async count(query = {}) {
+      if (storageKey === 'listings' || storageKey === 'properties') {
+        await ensureCloudSynced();
+      }
       const all = getStore();
       return all.filter((item) => matchesQuery(item, query)).length;
     },
@@ -1273,12 +1681,23 @@ function createEntityStore(storageKey, initialData) {
       const all = getStore();
       const id = record.id || `rec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const now = new Date().toISOString();
+      const nowTs = nextContentTimestamp();
       const created = {
         ...record,
         id,
         created_date: record.created_date || now,
         updated_date: record.updated_date || now,
+        _content_updated_ts: nowTs,
       };
+      if (storageKey === 'listings') {
+        if (created.latitude !== undefined && created.latitude !== null && created.latitude !== '') {
+          created.lat = Number(created.latitude);
+        }
+        if (created.longitude !== undefined && created.longitude !== null && created.longitude !== '') {
+          created.lng = Number(created.longitude);
+        }
+        Object.assign(created, listingSearchFields(created));
+      }
       all.unshift(created);
       saveStore(all);
       if (storageKey === 'listings') {
@@ -1286,11 +1705,11 @@ function createEntityStore(storageKey, initialData) {
         broadcastStoreUpdate(['listings', 'properties', 'favorites']);
         await Promise.race([
           pushListingsToCloud(),
-          new Promise((r) => setTimeout(r, 1800)),
+          new Promise((r) => setTimeout(r, 4500)),
         ]);
       }
       if (storageKey === 'properties') {
-        syncPropertyImagesToListing(created);
+        syncPropertyToListing(created);
       }
       return created;
     },
@@ -1298,11 +1717,13 @@ function createEntityStore(storageKey, initialData) {
     async bulkCreate(records = []) {
       const all = getStore();
       const now = new Date().toISOString();
+      const nowTs = nextContentTimestamp();
       const createdList = records.map((r, i) => ({
         ...r,
         id: r.id || `rec-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
         created_date: r.created_date || now,
         updated_date: r.updated_date || now,
+        _content_updated_ts: nowTs,
       }));
       const next = [...createdList, ...all];
       saveStore(next);
@@ -1316,11 +1737,41 @@ function createEntityStore(storageKey, initialData) {
       const all = getStore();
       const index = all.findIndex((item) => item.id === id || item.listing_id === id);
       if (index === -1) return updates;
+
+      const updateKeys = Object.keys(updates || {});
+      const isViewOnlyUpdate =
+        storageKey === 'listings' && updateKeys.length === 1 && updateKeys[0] === 'views';
+
+      if (isViewOnlyUpdate) {
+        const updatedViewOnly = {
+          ...all[index],
+          views: updates.views,
+        };
+        all[index] = updatedViewOnly;
+        storage.set(storageKey, all);
+        return updatedViewOnly;
+      }
+
+      const now = new Date().toISOString();
+      const nowTs = nextContentTimestamp();
       const updated = {
         ...all[index],
         ...updates,
-        updated_date: new Date().toISOString(),
+        updated_date: now,
+        _content_updated_ts: nowTs,
       };
+      if (Array.isArray(updates?.images)) {
+        delete updated._raw_image_refs;
+      }
+      if (storageKey === 'listings') {
+        if (updated.latitude !== undefined && updated.latitude !== null && updated.latitude !== '') {
+          updated.lat = Number(updated.latitude);
+        }
+        if (updated.longitude !== undefined && updated.longitude !== null && updated.longitude !== '') {
+          updated.lng = Number(updated.longitude);
+        }
+        Object.assign(updated, listingSearchFields(updated));
+      }
       all[index] = updated;
       saveStore(all);
       if (storageKey === 'listings') {
@@ -1328,11 +1779,11 @@ function createEntityStore(storageKey, initialData) {
         broadcastStoreUpdate(['listings', 'properties', 'favorites']);
         await Promise.race([
           pushListingsToCloud(),
-          new Promise((r) => setTimeout(r, 1800)),
+          new Promise((r) => setTimeout(r, 4500)),
         ]);
       }
       if (storageKey === 'properties') {
-        syncPropertyImagesToListing(updated);
+        syncPropertyToListing(updated);
       }
       return updated;
     },
@@ -1342,10 +1793,29 @@ function createEntityStore(storageKey, initialData) {
       let updatedCount = 0;
       const updatedRecords = [];
       const now = new Date().toISOString();
+      const nowTs = nextContentTimestamp();
       all.forEach((item, index) => {
         if (matchesQuery(item, query)) {
-          all[index] = { ...item, ...updates, updated_date: now };
-          updatedRecords.push(all[index]);
+          const nextItem = {
+            ...item,
+            ...updates,
+            updated_date: now,
+            _content_updated_ts: nowTs,
+          };
+          if (Array.isArray(updates?.images)) {
+            delete nextItem._raw_image_refs;
+          }
+          if (storageKey === 'listings') {
+            if (nextItem.latitude !== undefined && nextItem.latitude !== null && nextItem.latitude !== '') {
+              nextItem.lat = Number(nextItem.latitude);
+            }
+            if (nextItem.longitude !== undefined && nextItem.longitude !== null && nextItem.longitude !== '') {
+              nextItem.lng = Number(nextItem.longitude);
+            }
+            Object.assign(nextItem, listingSearchFields(nextItem));
+          }
+          all[index] = nextItem;
+          updatedRecords.push(nextItem);
           updatedCount++;
         }
       });
@@ -1355,11 +1825,11 @@ function createEntityStore(storageKey, initialData) {
         broadcastStoreUpdate(['listings', 'properties', 'favorites']);
         await Promise.race([
           pushListingsToCloud(),
-          new Promise((r) => setTimeout(r, 1800)),
+          new Promise((r) => setTimeout(r, 4500)),
         ]);
       }
       if (storageKey === 'properties') {
-        updatedRecords.forEach(syncPropertyImagesToListing);
+        updatedRecords.forEach(syncPropertyToListing);
       }
       return { updated: updatedCount };
     },
@@ -1374,7 +1844,7 @@ function createEntityStore(storageKey, initialData) {
       if (storageKey === 'listings') {
         await Promise.race([
           pushListingsToCloud(),
-          new Promise((r) => setTimeout(r, 1800)),
+          new Promise((r) => setTimeout(r, 4500)),
         ]);
       }
       return { success: true };
@@ -1393,13 +1863,16 @@ function createEntityStore(storageKey, initialData) {
       if (storageKey === 'listings') {
         await Promise.race([
           pushListingsToCloud(),
-          new Promise((r) => setTimeout(r, 1800)),
+          new Promise((r) => setTimeout(r, 4500)),
         ]);
       }
       return { success: true };
     },
 
     async aggregate({ query = {}, groupBy, avg, sum } = {}) {
+      if (storageKey === 'listings' || storageKey === 'properties') {
+        await ensureCloudSynced();
+      }
       const all = getStore().filter((item) => matchesQuery(item, query));
       const groups = {};
 
